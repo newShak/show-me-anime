@@ -1,12 +1,18 @@
 """节点与相册 API。"""
 
+import mimetypes
+
 from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 
+from app.config import get_settings
 from app.db.models import Node
 from app.db.session import get_db
 from app.schemas.node import ImageItem, ImageListResponse, NodeResponse
 from app.services.album_reader import AlbumReader, get_album_reader
+from app.services.media import resolve_cover_file, resolve_image_file
+from app.services.thumbnail import get_or_create_thumbnail
 
 router = APIRouter(tags=["nodes"])
 
@@ -50,3 +56,49 @@ def list_node_images(
         total=len(names),
         items=[ImageItem(index=i, filename=name) for i, name in enumerate(names)],
     )
+
+
+@router.get("/nodes/{node_id}/images/{index}/file")
+def get_image_file(
+    node_id: int,
+    index: int,
+    db: Session = Depends(get_db),
+    reader: AlbumReader = Depends(get_album_reader),
+) -> FileResponse:
+    node = db.get(Node, node_id)
+    if node is None:
+        raise HTTPException(status_code=404, detail="node not found")
+    file_path, filename = resolve_image_file(node, index, db, reader)
+    media_type = mimetypes.guess_type(filename)[0] or "application/octet-stream"
+    return FileResponse(file_path, media_type=media_type, filename=filename)
+
+
+@router.get("/nodes/{node_id}/images/{index}/thumb")
+def get_image_thumb(
+    node_id: int,
+    index: int,
+    db: Session = Depends(get_db),
+    reader: AlbumReader = Depends(get_album_reader),
+) -> FileResponse:
+    node = db.get(Node, node_id)
+    if node is None:
+        raise HTTPException(status_code=404, detail="node not found")
+    settings = get_settings()
+    file_path, filename = resolve_image_file(node, index, db, reader, settings)
+    thumb_path = get_or_create_thumbnail(file_path, node.path, filename, settings)
+    return FileResponse(thumb_path, media_type="image/webp")
+
+
+@router.get("/nodes/{node_id}/cover/thumb")
+def get_cover_thumb(
+    node_id: int,
+    db: Session = Depends(get_db),
+    reader: AlbumReader = Depends(get_album_reader),
+) -> FileResponse:
+    node = db.get(Node, node_id)
+    if node is None:
+        raise HTTPException(status_code=404, detail="node not found")
+    settings = get_settings()
+    file_path, filename = resolve_cover_file(node, db, reader, settings)
+    thumb_path = get_or_create_thumbnail(file_path, node.path, filename, settings)
+    return FileResponse(thumb_path, media_type="image/webp")

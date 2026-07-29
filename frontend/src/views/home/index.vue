@@ -4,9 +4,12 @@
       <template #header>
         <div class="head">
           <span>show-me-anime</span>
-          <el-tag :type="healthOk ? 'success' : 'danger'">
-            {{ healthOk ? '后端已连接' : '后端未连接' }}
-          </el-tag>
+          <div class="actions">
+            <el-button type="primary" link @click="$router.push('/browse')">进入画廊</el-button>
+            <el-tag :type="healthOk ? 'success' : 'danger'">
+              {{ healthOk ? '后端已连接' : '后端未连接' }}
+            </el-tag>
+          </div>
         </div>
       </template>
 
@@ -73,5 +76,11 @@ onMounted(async () => {
   justify-content: space-between;
   font-size: 18px;
   font-weight: 600;
+}
+
+.actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
 }
 </style>
