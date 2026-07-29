@@ -13,7 +13,7 @@
 
 详细开发计划见 [docs/plans/gallery-development-plan.md](docs/plans/gallery-development-plan.md)。
 
-## 技术栈（计划）
+## 技术栈
 
 | 层级 | 选型 |
 |------|------|
@@ -23,23 +23,52 @@
 
 ## 快速开始
 
-> 项目尚在规划阶段，以下为预期用法。
+### 1. 后端
 
 ```bash
-# 克隆
-git clone git@github.com:newShak/show-me-anime.git
-cd show-me-anime
-
-# 后端（待实现）
 python -m venv .venv
 .venv\Scripts\activate
 pip install -r backend/requirements.txt
 
-# 前端（待实现）
-cd frontend && npm install && npm run dev
+# 启动 API（默认 http://127.0.0.1:8000）
+cd backend
+..\.venv\Scripts\uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+```
+
+### 2. 前端
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+浏览器打开 http://127.0.0.1:5173 ，首页会显示后端连接状态与当前配置。
+
+### 4. 扫描与浏览（Phase 1）
+
+```bash
+# 将图片放入 gallery/ 目录，例如 gallery/comic-a/1.jpg
+# 触发扫描
+curl -X POST http://127.0.0.1:8000/api/scan/trigger
+
+# 查看顶层分类/相册
+curl http://127.0.0.1:8000/api/nodes
+
+# 查看相册内图片列表（自然排序）
+curl http://127.0.0.1:8000/api/nodes/{id}/images
+```
+
+### 3. 测试
+
+```bash
+cd backend
+..\.venv\Scripts\pytest -q
 ```
 
 ## 配置
+
+复制 `.env.example` 为 `.env`，或复制 `config.yaml.example` 为 `config.yaml`。
 
 | 环境变量 | 默认值 | 说明 |
 |----------|--------|------|
@@ -47,6 +76,8 @@ cd frontend && npm install && npm run dev
 | `THUMB_DIR` | `./data/thumbs` | 缩略图缓存目录 |
 
 未配置时使用默认值。可将图片放入 `./gallery/` 目录进行试用。
+
+配置优先级：`data/settings.json` > `.env` > `config.yaml` > 默认值。
 
 ## 许可证
 

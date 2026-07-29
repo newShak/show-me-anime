@@ -22,3 +22,7 @@ data/settings.json
 # OS
 .DS_Store
 Thumbs.db
+
+# Frontend
+frontend/node_modules/
+frontend/dist/

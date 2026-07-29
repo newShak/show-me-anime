@@ -1,0 +1,41 @@
+"""pytest 公共 fixture。"""
+
+import pytest
+from fastapi.testclient import TestClient
+
+from app.config import reload_settings
+from app.db.session import init_db, reset_engine
+from app.main import app
+from app.services.album_reader import reset_album_reader
+
+
+@pytest.fixture(autouse=True)
+def _reset_app_state(tmp_path, monkeypatch):
+    gallery = tmp_path / "gallery"
+    thumbs = tmp_path / "thumbs"
+    gallery.mkdir()
+    thumbs.mkdir()
+    db_path = tmp_path / "test.db"
+    monkeypatch.setenv("GALLERY_ROOT", str(gallery))
+    monkeypatch.setenv("THUMB_DIR", str(thumbs))
+    monkeypatch.setenv("DATABASE_URL", f"sqlite:///{db_path.as_posix()}")
+    reload_settings()
+    reset_engine()
+    reset_album_reader()
+    init_db()
+    yield
+    reset_engine()
+    reset_album_reader()
+    reload_settings()
+
+
+@pytest.fixture
+def client() -> TestClient:
+    return TestClient(app)
+
+
+@pytest.fixture
+def gallery():
+    from app.config import get_settings
+
+    return get_settings().gallery_root
