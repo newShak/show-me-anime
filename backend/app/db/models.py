@@ -20,6 +20,7 @@ class Node(Base):
     node_type: Mapped[str] = mapped_column(String, nullable=False)
     source_type: Mapped[str] = mapped_column(String, nullable=False, default="folder")
     image_count: Mapped[int] = mapped_column(Integer, default=0)
+    subdir_count: Mapped[int] = mapped_column(Integer, default=0)
     cover_rel_path: Mapped[str | None] = mapped_column(String, nullable=True)
     dir_mtime: Mapped[float | None] = mapped_column(Float, nullable=True)
     created_at: Mapped[float] = mapped_column(Float, default=lambda: time.time())

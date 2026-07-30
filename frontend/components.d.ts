@@ -12,12 +12,14 @@ export {}
 declare module 'vue' {
   export interface GlobalComponents {
     AlbumGrid: typeof import('./src/components/AlbumGrid.vue')['default']
+    AppNav: typeof import('./src/components/AppNav.vue')['default']
     BreadcrumbNav: typeof import('./src/components/BreadcrumbNav.vue')['default']
     ElAlert: typeof import('element-plus/es')['ElAlert']
     ElBreadcrumb: typeof import('element-plus/es')['ElBreadcrumb']
     ElBreadcrumbItem: typeof import('element-plus/es')['ElBreadcrumbItem']
     ElButton: typeof import('element-plus/es')['ElButton']
     ElCard: typeof import('element-plus/es')['ElCard']
+    ElCheckbox: typeof import('element-plus/es')['ElCheckbox']
     ElCol: typeof import('element-plus/es')['ElCol']
     ElDescriptions: typeof import('element-plus/es')['ElDescriptions']
     ElDescriptionsItem: typeof import('element-plus/es')['ElDescriptionsItem']
@@ -25,6 +27,7 @@ declare module 'vue' {
     ElEmpty: typeof import('element-plus/es')['ElEmpty']
     ElForm: typeof import('element-plus/es')['ElForm']
     ElFormItem: typeof import('element-plus/es')['ElFormItem']
+    ElIcon: typeof import('element-plus/es')['ElIcon']
     ElInput: typeof import('element-plus/es')['ElInput']
     ElInputNumber: typeof import('element-plus/es')['ElInputNumber']
     ElOption: typeof import('element-plus/es')['ElOption']
@@ -42,6 +45,7 @@ declare module 'vue' {
     NodeTree: typeof import('./src/components/NodeTree.vue')['default']
     RouterLink: typeof import('vue-router')['RouterLink']
     RouterView: typeof import('vue-router')['RouterView']
+    ScrollViewer: typeof import('./src/components/ScrollViewer.vue')['default']
     SearchBar: typeof import('./src/components/SearchBar.vue')['default']
   }
 }

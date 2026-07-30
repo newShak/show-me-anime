@@ -1,14 +1,15 @@
 <template>
-  <div class="search-bar">
+  <div class="search-bar" :class="{ full }">
     <el-input
       v-model="keyword"
       clearable
-      placeholder="搜索相册名、路径..."
+      :placeholder="placeholder"
+      size="large"
       @keyup.enter="submit"
       @clear="emit('clear')"
     >
-      <template #append>
-        <el-button :icon="Search" @click="submit" />
+      <template #prefix>
+        <el-icon><Search /></el-icon>
       </template>
     </el-input>
   </div>
@@ -18,7 +19,10 @@
 import { ref, watch } from 'vue'
 import { Search } from '@element-plus/icons-vue'
 
-const props = defineProps<{ modelValue?: string }>()
+const props = withDefaults(
+  defineProps<{ modelValue?: string; full?: boolean; placeholder?: string }>(),
+  { full: false, placeholder: 'Search' },
+)
 const emit = defineEmits<{ search: [q: string]; clear: [] }>()
 
 const keyword = ref(props.modelValue ?? '')
@@ -40,5 +44,21 @@ const submit = () => {
 .search-bar {
   flex: 1;
   max-width: 420px;
+}
+
+.search-bar.full {
+  flex: none;
+  max-width: none;
+  width: 100%;
+}
+
+.search-bar :deep(.el-input__wrapper) {
+  border-radius: 8px;
+  box-shadow: 0 0 0 1px var(--app-border) inset;
+}
+
+.search-bar :deep(.el-input__wrapper:hover),
+.search-bar :deep(.el-input__wrapper.is-focus) {
+  box-shadow: 0 0 0 1px var(--el-color-primary) inset;
 }
 </style>

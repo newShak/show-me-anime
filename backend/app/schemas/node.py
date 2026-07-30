@@ -11,6 +11,7 @@ class NodeResponse(BaseModel):
     node_type: str
     source_type: str
     image_count: int
+    subdir_count: int
     cover_rel_path: str | None
 
     model_config = {"from_attributes": True}
@@ -31,3 +32,12 @@ class NodeUpdate(BaseModel):
     node_type: str | None = None
     cover_rel_path: str | None = None
     cover_index: int | None = Field(default=None, ge=0)
+
+
+class NodeBatchDelete(BaseModel):
+    ids: list[int] = Field(min_length=1)
+
+
+class NodeBatchDeleteResponse(BaseModel):
+    deleted: int
+    errors: list[str] = []

@@ -1,9 +1,15 @@
 import { http } from './http'
-import type { ImageList, NodeItem, NodeUpdate } from '@/types/node'
+import type { NodeSort } from '@/composables/useNodeSort'
+import type { ImageList, NodeBatchDeleteResult, NodeItem, NodeUpdate } from '@/types/node'
 import type { ReadProgress } from '@/types/progress'
 
-export const fetchNodes = (parentId?: number) =>
-  http.get<NodeItem[]>('/nodes', { params: parentId != null ? { parent_id: parentId } : {} })
+export const fetchNodes = (parentId?: number, sort?: NodeSort) =>
+  http.get<NodeItem[]>('/nodes', {
+    params: {
+      ...(parentId != null ? { parent_id: parentId } : {}),
+      ...(sort ? { sort_by: sort.sortBy, sort_order: sort.sortOrder } : {}),
+    },
+  })
 
 export const fetchNode = (id: number) => http.get<NodeItem>(`/nodes/${id}`)
 
@@ -23,3 +29,6 @@ export const imageThumbUrl = (nodeId: number, index: number) =>
 
 export const imageFileUrl = (nodeId: number, index: number) =>
   `/api/nodes/${nodeId}/images/${index}/file`
+
+export const deleteNodes = (ids: number[]) =>
+  http.post<NodeBatchDeleteResult>('/nodes/batch-delete', { ids })

@@ -44,6 +44,7 @@ class Scanner:
                         node_type=meta["node_type"],
                         source_type=constants.SOURCE_FOLDER,
                         image_count=meta["image_count"],
+                        subdir_count=meta["subdir_count"],
                         cover_rel_path=meta["cover_rel_path"],
                         dir_mtime=meta["dir_mtime"],
                     )
@@ -56,6 +57,7 @@ class Scanner:
                         or node.node_type != meta["node_type"]
                         or node.parent_id != parent_id
                         or node.image_count != meta["image_count"]
+                        or node.subdir_count != meta["subdir_count"]
                         or node.cover_rel_path != meta["cover_rel_path"]
                         or node.dir_mtime != meta["dir_mtime"]
                     )
@@ -64,6 +66,7 @@ class Scanner:
                         node.node_type = meta["node_type"]
                         node.parent_id = parent_id
                         node.image_count = meta["image_count"]
+                        node.subdir_count = meta["subdir_count"]
                         node.cover_rel_path = meta["cover_rel_path"]
                         node.dir_mtime = meta["dir_mtime"]
                         node.updated_at = time.time()
@@ -140,6 +143,7 @@ class Scanner:
             "name": root.name if not rel else current.name,
             "node_type": node_type,
             "image_count": len(images),
+            "subdir_count": len(subdirs),
             "cover_rel_path": images[0] if images else None,
             "dir_mtime": current.stat().st_mtime,
         }

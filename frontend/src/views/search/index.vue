@@ -2,7 +2,7 @@
   <div class="search-page">
     <header class="toolbar">
       <SearchBar :model-value="query" @search="onSearch" />
-      <el-button @click="$router.push('/browse')">返回浏览</el-button>
+      <el-button @click="$router.push('/browse')">返回顶层</el-button>
     </header>
 
     <main class="content">
@@ -85,7 +85,7 @@ watch(
 <style scoped>
 .search-page {
   min-height: 100vh;
-  background: #f5f7fa;
+  background: var(--app-bg);
 }
 
 .toolbar {
@@ -93,8 +93,8 @@ watch(
   gap: 12px;
   align-items: center;
   padding: 16px 24px;
-  background: #fff;
-  border-bottom: 1px solid #ebeef5;
+  background: var(--app-surface);
+  border-bottom: 1px solid var(--app-border);
 }
 
 .content {
@@ -105,7 +105,7 @@ watch(
 
 .summary {
   margin: 0 0 16px;
-  color: #606266;
+  color: var(--app-text-secondary);
 }
 
 .list {
@@ -124,7 +124,7 @@ watch(
 }
 
 .path {
-  color: #909399;
+  color: var(--app-text-muted);
   font-size: 13px;
   margin-top: 4px;
 }
@@ -135,6 +135,6 @@ watch(
   gap: 8px;
   margin-top: 8px;
   font-size: 12px;
-  color: #909399;
+  color: var(--app-text-muted);
 }
 </style>

@@ -6,6 +6,7 @@ export type NodeItem = {
   node_type: string
   source_type: string
   image_count: number
+  subdir_count: number
   cover_rel_path: string | null
 }
 
@@ -24,6 +25,11 @@ export type ImageList = {
   node_id: number
   total: number
   items: ImageItem[]
+}
+
+export type NodeBatchDeleteResult = {
+  deleted: number
+  errors: string[]
 }
 
 export type ScanJob = {

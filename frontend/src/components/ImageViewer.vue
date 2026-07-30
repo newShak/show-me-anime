@@ -3,6 +3,14 @@
     <header class="bar">
       <el-button text @click="emit('close')">← 返回</el-button>
       <span class="title">{{ title }}</span>
+      <div class="modes">
+        <el-button text :type="mode === 'page' ? 'primary' : undefined" @click="emit('mode-change', 'page')">
+          翻页
+        </el-button>
+        <el-button text :type="mode === 'scroll' ? 'primary' : undefined" @click="emit('mode-change', 'scroll')">
+          滚动
+        </el-button>
+      </div>
       <span class="page">{{ page + 1 }} / {{ total }}</span>
     </header>
 
@@ -16,19 +24,22 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { imageFileUrl } from '@/api/nodes'
+import type { ReaderMode } from '@/types/reader'
 
 const props = defineProps<{
   nodeId: number
   total: number
   page: number
   title: string
+  mode: ReaderMode
 }>()
 
 const emit = defineEmits<{
   close: []
   change: [page: number]
+  'mode-change': [mode: ReaderMode]
 }>()
 
 const rootRef = ref<HTMLElement | null>(null)
@@ -72,8 +83,6 @@ watch(
 )
 
 onMounted(() => rootRef.value?.focus())
-
-onUnmounted(() => {})
 </script>
 
 <style scoped>
@@ -101,6 +110,11 @@ onUnmounted(() => {})
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.modes {
+  display: flex;
+  gap: 4px;
 }
 
 .page {

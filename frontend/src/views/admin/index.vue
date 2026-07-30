@@ -2,10 +2,6 @@
   <div class="admin">
     <header class="head">
       <h1>管理</h1>
-      <div class="links">
-        <el-button link type="primary" @click="$router.push('/')">首页</el-button>
-        <el-button link type="primary" @click="$router.push('/browse')">画廊</el-button>
-      </div>
     </header>
 
     <el-row :gutter="16">
@@ -171,20 +167,12 @@ onMounted(load)
 }
 
 .head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
   margin-bottom: 20px;
 }
 
 .head h1 {
   margin: 0;
   font-size: 22px;
-}
-
-.links {
-  display: flex;
-  gap: 8px;
 }
 
 .scan-info {

@@ -8,14 +8,24 @@ from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 
 from app import constants
+from app.constants import ORDER_ASC, SORT_NAME
 from app.config import get_settings
 from app.db.models import Node, ReadProgress
 from app.db.session import get_db
-from app.schemas.node import ImageItem, ImageListResponse, NodeResponse, NodeUpdate
+from app.schemas.node import (
+    ImageItem,
+    ImageListResponse,
+    NodeBatchDelete,
+    NodeBatchDeleteResponse,
+    NodeResponse,
+    NodeUpdate,
+)
 from app.schemas.progress import ProgressResponse, ProgressUpdate
 from app.services.album_reader import AlbumReader, get_album_reader
 from app.services.media import resolve_cover_file, resolve_image_file
 from app.services.node_admin import sync_node_search_index
+from app.services.node_delete import delete_nodes
+from app.services.node_sort import SORT_FIELDS, SORT_ORDERS, sort_nodes
 from app.services.thumbnail import get_or_create_thumbnail
 
 router = APIRouter(tags=["nodes"])
@@ -24,14 +34,21 @@ router = APIRouter(tags=["nodes"])
 @router.get("/nodes", response_model=list[NodeResponse])
 def list_nodes(
     parent_id: int | None = Query(default=None),
+    sort_by: str = Query(default=SORT_NAME),
+    sort_order: str = Query(default=ORDER_ASC),
     db: Session = Depends(get_db),
 ) -> list[Node]:
+    if sort_by not in SORT_FIELDS:
+        raise HTTPException(status_code=400, detail="invalid sort_by")
+    if sort_order not in SORT_ORDERS:
+        raise HTTPException(status_code=400, detail="invalid sort_order")
+
     query = db.query(Node)
     if parent_id is None:
         query = query.filter(Node.parent_id.is_(None))
     else:
         query = query.filter(Node.parent_id == parent_id)
-    return query.order_by(Node.name).all()
+    return sort_nodes(query.all(), sort_by, sort_order)
 
 
 @router.get("/nodes/{node_id}", response_model=NodeResponse)
@@ -78,6 +95,17 @@ def update_node(
     sync_node_search_index(db, node)
     db.commit()
     return node
+
+
+@router.post("/nodes/batch-delete", response_model=NodeBatchDeleteResponse)
+def batch_delete_nodes(
+    body: NodeBatchDelete,
+    db: Session = Depends(get_db),
+    reader: AlbumReader = Depends(get_album_reader),
+) -> NodeBatchDeleteResponse:
+    deleted, errors = delete_nodes(db, body.ids)
+    reader.invalidate()
+    return NodeBatchDeleteResponse(deleted=deleted, errors=errors)
 
 
 @router.get("/nodes/{node_id}/images", response_model=ImageListResponse)

@@ -1,12 +1,25 @@
 <template>
   <ImageViewer
-    v-if="ready"
+    v-if="ready && mode === 'page'"
     :node-id="nodeId"
     :total="total"
     :page="page"
     :title="title"
+    :mode="mode"
     @close="onClose"
     @change="onPageChange"
+    @mode-change="onModeChange"
+  />
+  <ScrollViewer
+    v-else-if="ready"
+    :node-id="nodeId"
+    :total="total"
+    :page="page"
+    :title="title"
+    :mode="mode"
+    @close="onClose"
+    @change="onPageChange"
+    @mode-change="onModeChange"
   />
 </template>
 
@@ -14,7 +27,10 @@
 import { computed, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import ImageViewer from '@/components/ImageViewer.vue'
+import ScrollViewer from '@/components/ScrollViewer.vue'
+import { resolveReaderMode, saveReaderMode } from '@/composables/useReaderMode'
 import { fetchNode, fetchNodeImages, fetchProgress, saveProgress } from '@/api/nodes'
+import type { ReaderMode } from '@/types/reader'
 
 const route = useRoute()
 const router = useRouter()
@@ -24,6 +40,7 @@ const total = ref(0)
 const page = ref(0)
 const title = ref('')
 const ready = ref(false)
+const mode = ref<ReaderMode>(resolveReaderMode(route.query.mode as string | undefined))
 
 let saveTimer: ReturnType<typeof setTimeout> | null = null
 
@@ -42,7 +59,15 @@ const load = async () => {
   const savedPage = progressRes.data.page_index
   const initial = queryPage ?? savedPage ?? 0
   page.value = Math.min(Math.max(initial, 0), Math.max(total.value - 1, 0))
+  mode.value = resolveReaderMode(route.query.mode as string | undefined)
   ready.value = true
+}
+
+const syncRoute = () => {
+  router.replace({
+    path: `/reader/${nodeId.value}`,
+    query: { page: page.value, mode: mode.value },
+  })
 }
 
 const persist = (index: number) => {
@@ -54,8 +79,15 @@ const persist = (index: number) => {
 
 const onPageChange = (index: number) => {
   page.value = index
-  router.replace({ path: `/reader/${nodeId.value}`, query: { page: index } })
+  syncRoute()
   persist(index)
+}
+
+const onModeChange = (next: ReaderMode) => {
+  if (next === mode.value) return
+  mode.value = next
+  saveReaderMode(next)
+  syncRoute()
 }
 
 const onClose = () => {

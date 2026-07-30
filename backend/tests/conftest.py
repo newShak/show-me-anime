@@ -16,6 +16,9 @@ def _reset_app_state(tmp_path, monkeypatch):
     gallery.mkdir()
     thumbs.mkdir()
     db_path = tmp_path / "test.db"
+    settings_json = tmp_path / "settings.json"
+    monkeypatch.setattr("app.config.SETTINGS_JSON", settings_json)
+    monkeypatch.setattr("app.config._load_yaml_overrides", lambda: {})
     monkeypatch.setenv("WATCH_ENABLED", "false")
     monkeypatch.setenv("GALLERY_ROOT", str(gallery))
     monkeypatch.setenv("THUMB_DIR", str(thumbs))

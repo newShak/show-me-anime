@@ -34,6 +34,7 @@ def init_db() -> None:
     engine = get_engine()
     Base.metadata.create_all(bind=engine)
     with engine.connect() as conn:
+        _migrate_schema(conn)
         conn.execute(
             text(
                 """
@@ -48,6 +49,13 @@ def init_db() -> None:
             )
         )
         conn.commit()
+
+
+def _migrate_schema(conn) -> None:
+    """轻量 schema 迁移（SQLite 无 Alembic 时使用）。"""
+    cols = {row[1] for row in conn.execute(text("PRAGMA table_info(nodes)")).fetchall()}
+    if "subdir_count" not in cols:
+        conn.execute(text("ALTER TABLE nodes ADD COLUMN subdir_count INTEGER DEFAULT 0"))
 
 
 def get_db() -> Generator[Session, None, None]:

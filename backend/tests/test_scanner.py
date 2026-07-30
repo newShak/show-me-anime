@@ -45,3 +45,24 @@ def test_nested_nodes(client, gallery):
     children = client.get("/api/nodes", params={"parent_id": top[0]["id"]}).json()
     assert len(children) == 1
     assert children[0]["name"] == "series-a"
+
+
+def test_subdir_count(client, gallery):
+    container = gallery / "collection"
+    container.mkdir()
+    (container / "album-a").mkdir()
+    (container / "album-b").mkdir()
+    _touch(container / "album-a", "1.jpg")
+
+    client.post("/api/scan/trigger")
+    nodes = client.get("/api/nodes").json()
+    root = next(n for n in nodes if n["name"] == "collection")
+    assert root["subdir_count"] == 2
+    assert root["node_type"] == "container"
+
+    _touch(container, "cover.jpg")
+    client.post("/api/scan/trigger")
+    nodes = client.get("/api/nodes").json()
+    root = next(n for n in nodes if n["name"] == "collection")
+    assert root["subdir_count"] == 2
+    assert root["node_type"] == "both"
