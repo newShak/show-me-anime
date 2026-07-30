@@ -116,12 +116,22 @@ docker run -d \
   yaliyhub/show-me-anime:latest
 ```
 
-或使用 Compose（`docker-compose.yml` 已配置 Hub 镜像名，可直接 `pull`）：
+或使用 Compose：
+
+**有源码、本地构建**（项目根目录）：
 
 ```bash
-docker compose pull
-docker compose up -d
+docker compose up -d --build
 ```
+
+**仅拉 Hub 镜像**（任意目录，只需本 compose 文件）：
+
+```bash
+docker compose -f docker-compose.hub.yml pull
+docker compose -f docker-compose.hub.yml up -d
+```
+
+当前仓库的 `docker-compose.yml` 含 `build: .`，适合开发；`docker-compose.hub.yml` 只拉 `yaliyhub/show-me-anime:latest`，适合服务器部署。
 
 ### 6. 构建并推送到 Docker Hub
 

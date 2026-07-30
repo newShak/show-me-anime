@@ -1,0 +1,21 @@
+# 从 Docker Hub 拉取镜像部署（无需源码、无需 build）
+# 用法：
+#   mkdir -p gallery data
+#   docker compose -f docker-compose.hub.yml pull
+#   docker compose -f docker-compose.hub.yml up -d
+
+services:
+  show-me-anime:
+    image: yaliyhub/show-me-anime:latest
+    container_name: show-me-anime
+    ports:
+      - "8000:8000"
+    environment:
+      GALLERY_ROOT: /data/gallery
+      THUMB_DIR: /app/data/thumbs
+      DATABASE_URL: sqlite:////app/data/gallery.db
+      WATCH_ENABLED: "true"
+    volumes:
+      - ./gallery:/data/gallery
+      - ./data:/app/data
+    restart: unless-stopped
