@@ -1,5 +1,9 @@
+# 本地构建并运行（开发 / 改代码后验证）
+#   docker compose up -d --build
+
 services:
   show-me-anime:
+    build: .
     image: yaliyhub/show-me-anime:latest
     container_name: show-me-anime
     ports:
@@ -10,14 +14,7 @@ services:
       DATABASE_URL: sqlite:////app/data/gallery.db
       WATCH_ENABLED: "true"
     volumes:
-      # 画廊（图片/压缩包）
-      - D:/play/data/gallery:/data/gallery
-      # 缩略图单独映射到宿主机
-      - D:/play/data/thumbs:/data/thumbs
-      # 数据库 + settings.json
-      - D:/play/show-me-anime/data:/app/data
-      # 可选：config.yaml
-      - D:/play/show-me-anime/config.yaml:/app/config.yaml
-      # 可选：.env
-      - D:/play/show-me-anime/.env:/app/.env
+      - ./gallery:/data/gallery
+      - ./data/thumbs:/data/thumbs
+      - ./data:/app/data
     restart: unless-stopped

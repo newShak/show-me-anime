@@ -1,8 +1,12 @@
-# 从 Docker Hub 拉取镜像部署（无需源码、无需 build）
-# 用法：
-#   mkdir -p gallery data
+# 使用 Docker Hub 预构建镜像（无需源码、无需 build）
 #   docker compose -f docker-compose.hub.yml pull
 #   docker compose -f docker-compose.hub.yml up -d
+#
+# 宿主机目录说明（按需修改下方 volumes 路径）：
+#   画廊     → GALLERY_ROOT      容器 /data/gallery
+#   缩略图   → THUMB_DIR         容器 /data/thumbs
+#   数据库   → DATABASE_URL      容器 /app/data/gallery.db
+#   设置     → settings.json     容器 /app/data/settings.json
 
 services:
   show-me-anime:
@@ -12,10 +16,14 @@ services:
       - "8000:8000"
     environment:
       GALLERY_ROOT: /data/gallery
-      THUMB_DIR: /app/data/thumbs
+      THUMB_DIR: /data/thumbs
       DATABASE_URL: sqlite:////app/data/gallery.db
       WATCH_ENABLED: "true"
     volumes:
-      - ./gallery:/data/gallery
-      - ./data:/app/data
+      # 画廊（图片 / 压缩包）
+      - D:/play/data/gallery:/data/gallery
+      # 缩略图
+      - D:/play/data/thumbs:/data/thumbs
+      # 数据库 gallery.db + 设置 settings.json
+      - D:/play/show-me-anime/data:/app/data
     restart: unless-stopped
