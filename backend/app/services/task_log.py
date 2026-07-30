@@ -4,8 +4,11 @@ import time
 
 from sqlalchemy.orm import Session
 
+from sqlalchemy import and_
+
+from app.constants import SCAN_RUNNING
 from app.db.models import ScanJob, TaskLog
-from app.schemas.task import TaskRecordPageResponse, TaskRecordResponse
+from app.schemas.task import TaskPurgeResponse, TaskRecordPageResponse, TaskRecordResponse
 
 TASK_SCAN = "scan"
 TASK_REBUILD_THUMBS = "rebuild_thumbs"
@@ -79,3 +82,29 @@ def list_task_records(db: Session, page: int = 1, page_size: int = 10) -> TaskRe
     )
     items = merged[offset : offset + page_size]
     return TaskRecordPageResponse(items=items, total=total, page=page, page_size=page_size)
+
+
+def _time_range_filter(model, start_time: float, end_time: float):
+    """按 started_at 落在闭区间 [start_time, end_time] 过滤。"""
+    return and_(
+        model.started_at.isnot(None),
+        model.started_at >= start_time,
+        model.started_at <= end_time,
+    )
+
+
+def purge_task_records(db: Session, start_time: float, end_time: float) -> TaskPurgeResponse:
+    """删除时间范围内的任务记录；进行中的扫描任务不会被删除。"""
+    scan_q = db.query(ScanJob).filter(
+        _time_range_filter(ScanJob, start_time, end_time),
+        ScanJob.status != SCAN_RUNNING,
+    )
+    log_q = db.query(TaskLog).filter(_time_range_filter(TaskLog, start_time, end_time))
+    deleted_scans = scan_q.delete(synchronize_session=False)
+    deleted_logs = log_q.delete(synchronize_session=False)
+    db.commit()
+    return TaskPurgeResponse(
+        deleted_scans=deleted_scans,
+        deleted_logs=deleted_logs,
+        deleted=deleted_scans + deleted_logs,
+    )

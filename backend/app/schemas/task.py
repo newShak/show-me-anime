@@ -28,3 +28,22 @@ class TaskRecordPageResponse(BaseModel):
     total: int
     page: int
     page_size: int = Field(alias="pageSize")
+
+
+class TaskPurgeRequest(BaseModel):
+    """按时间范围清理任务记录。"""
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    start_time: float = Field(alias="startTime")
+    end_time: float = Field(alias="endTime")
+
+
+class TaskPurgeResponse(BaseModel):
+    """清理任务记录结果。"""
+
+    model_config = ConfigDict(populate_by_name=True, serialize_by_alias=True)
+
+    deleted_scans: int = Field(alias="deletedScans")
+    deleted_logs: int = Field(alias="deletedLogs")
+    deleted: int

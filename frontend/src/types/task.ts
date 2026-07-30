@@ -18,3 +18,11 @@ export type TaskRecordPage = {
   page: number
   pageSize: number
 }
+
+export type TaskPurgeResult = {
+  deletedScans: number
+  deletedLogs: number
+  deleted: number
+}
+
+export type TaskPurgePreset = 'day' | 'week' | 'month' | 'year' | 'custom'

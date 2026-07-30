@@ -4,13 +4,24 @@ import logging
 import threading
 import time
 
-from watchdog.events import FileSystemEventHandler
+from watchdog.events import (
+    EVENT_TYPE_CLOSED_NO_WRITE,
+    EVENT_TYPE_OPENED,
+    FileSystemEventHandler,
+)
 from watchdog.observers import Observer
 
 from app.config import get_settings
 from app.services.scan_runner import is_scan_running, run_scan
 
 logger = logging.getLogger(__name__)
+
+# walk/iterdir/读 zip 会触发只读 open/close，不是内容变更
+_READ_ONLY_EVENT_TYPES = frozenset({EVENT_TYPE_OPENED, EVENT_TYPE_CLOSED_NO_WRITE})
+
+
+def _is_read_only_access(event) -> bool:
+    return getattr(event, "event_type", "") in _READ_ONLY_EVENT_TYPES
 
 
 def _unique_paths(paths: list[str]) -> list[str]:
@@ -40,6 +51,14 @@ class _DebouncedHandler(FileSystemEventHandler):
         return is_scan_running() or time.time() < self._cooldown_until
 
     def on_any_event(self, event) -> None:
+        if _is_read_only_access(event):
+            logger.debug(
+                "watchdog event ignored type=%s is_dir=%s src=%s reason=read_only_access",
+                getattr(event, "event_type", "?"),
+                getattr(event, "is_directory", False),
+                getattr(event, "src_path", None),
+            )
+            return
         src = getattr(event, "src_path", None)
         dest = getattr(event, "dest_path", None)
         if self._scan_busy():
