@@ -1,18 +1,23 @@
 services:
   show-me-anime:
-    build: .
     image: yaliyhub/show-me-anime:latest
     container_name: show-me-anime
     ports:
       - "8000:8000"
     environment:
       GALLERY_ROOT: /data/gallery
-      THUMB_DIR: /app/data/thumbs
+      THUMB_DIR: /data/thumbs
       DATABASE_URL: sqlite:////app/data/gallery.db
       WATCH_ENABLED: "true"
     volumes:
-      # 画廊图片目录（只读亦可：末尾加 :ro）
-      - ./gallery:/data/gallery
-      # 数据库、缩略图、settings.json
-      - ./data:/app/data
+      # 画廊（图片/压缩包）
+      - D:/play/data/gallery:/data/gallery
+      # 缩略图单独映射到宿主机
+      - D:/play/data/thumbs:/data/thumbs
+      # 数据库 + settings.json
+      - D:/play/show-me-anime/data:/app/data
+      # 可选：config.yaml
+      - D:/play/show-me-anime/config.yaml:/app/config.yaml
+      # 可选：.env
+      - D:/play/show-me-anime/.env:/app/.env
     restart: unless-stopped
