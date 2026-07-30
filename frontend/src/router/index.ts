@@ -7,6 +7,7 @@ const router = createRouter({
     { path: '/browse', component: () => import('@/views/browse/index.vue') },
     { path: '/browse/:nodeId', component: () => import('@/views/browse/index.vue') },
     { path: '/reader/:nodeId', component: () => import('@/views/reader/index.vue') },
+    { path: '/search', component: () => import('@/views/search/index.vue') },
   ],
 })
 

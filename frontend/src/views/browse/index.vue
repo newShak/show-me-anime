@@ -1,6 +1,7 @@
 <template>
   <div class="browse">
     <header class="toolbar">
+      <SearchBar @search="(q) => $router.push({ path: '/search', query: { q } })" />
       <BreadcrumbNav :items="crumbs" @navigate="goTo" />
       <el-button type="primary" :loading="scanning" @click="onScan">扫描目录</el-button>
     </header>
@@ -32,6 +33,7 @@
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import SearchBar from '@/components/SearchBar.vue'
 import AlbumGrid from '@/components/AlbumGrid.vue'
 import BreadcrumbNav from '@/components/BreadcrumbNav.vue'
 import ImageGrid from '@/components/ImageGrid.vue'
@@ -176,6 +178,7 @@ onMounted(() => loadView(nodeId.value))
   padding: 16px 24px;
   background: #fff;
   border-bottom: 1px solid #ebeef5;
+  flex-wrap: wrap;
 }
 
 .layout {
