@@ -2,16 +2,15 @@
 
 本地图片画廊，用于浏览和管理漫画、组图等按文件夹组织的图片集合。
 
-## 功能规划
+## 功能概览
 
 - 以文件夹 / 压缩包为集合单位组织内容
-- Web 页面浏览与管理
-- 自动扫描目录并索引到 SQLite
-- 集合级搜索（相册名、路径、标签）
-- 图片按文件名自然排序展示
-- 可配置画廊根目录与缩略图存储路径
+- Web 页面浏览、阅读、搜索与标签管理
+- 增量 / 全量扫描索引到 SQLite
+- 目录监听（watchdog）自动触发增量扫描
+- 集合级 FTS 搜索与自然排序阅读
 
-详细开发计划见 [docs/plans/gallery-development-plan.md](docs/plans/gallery-development-plan.md)。
+详细设计、数据模型与 API 说明见 **[docs/project-overview.md](docs/project-overview.md)**。
 
 ## 技术栈
 
