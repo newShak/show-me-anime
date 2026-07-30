@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Any
 
 import yaml
-from pydantic import Field
+from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -35,8 +35,16 @@ class Settings(BaseSettings):
     watch_enabled: bool = Field(default=True)
     watch_debounce_seconds: int = Field(default=3)
     album_list_cache_ttl: int = Field(default=300)
+    log_level: str = Field(default="INFO")
     host: str = Field(default="0.0.0.0")
     port: int = Field(default=8000)
+
+    @field_validator("log_level")
+    @classmethod
+    def _normalize_log_level(cls, value: str) -> str:
+        from app.logging_config import normalize_log_level
+
+        return normalize_log_level(value)
 
     def resolve_paths(self) -> None:
         """相对路径转绝对路径，并确保必要目录存在。"""
@@ -63,6 +71,7 @@ class Settings(BaseSettings):
             "watch_enabled": self.watch_enabled,
             "watch_debounce_seconds": self.watch_debounce_seconds,
             "album_list_cache_ttl": self.album_list_cache_ttl,
+            "log_level": self.log_level.upper(),
             "host": self.host,
             "port": self.port,
         }

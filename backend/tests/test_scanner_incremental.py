@@ -58,3 +58,20 @@ def test_rescan_detects_new_file_in_existing_album(client, gallery):
     nodes = client.get("/api/nodes").json()
     node = next(n for n in nodes if n["name"] == "growing-album")
     assert node["image_count"] == 2
+
+
+def test_hot_path_rescan_does_not_churn_container_cover(client, gallery):
+    """watchdog 热路径重扫不应反复清空/恢复容器继承封面。"""
+    from PIL import Image
+
+    from app.services.scan_runner import run_scan
+
+    album = gallery / "collection" / "album-a"
+    album.mkdir(parents=True)
+    Image.new("RGB", (40, 40), (255, 0, 0)).save(album / "1.jpg", format="JPEG")
+
+    client.post("/api/scan/trigger")
+    hint = str((gallery / "collection" / "album-a" / "1.jpg").resolve())
+    job = run_scan(source="watchdog", changed_paths=[hint])
+    assert job is not None
+    assert job.updated == 0

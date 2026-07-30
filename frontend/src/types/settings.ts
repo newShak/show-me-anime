@@ -1,3 +1,5 @@
+export type LogLevel = 'DEBUG' | 'INFO' | 'WARNING' | 'ERROR' | 'CRITICAL'
+
 export type Settings = {
   gallery_root: string
   thumb_dir: string
@@ -6,12 +8,16 @@ export type Settings = {
   watch_enabled: boolean
   watch_debounce_seconds: number
   album_list_cache_ttl: number
+  log_level: LogLevel
   host: string
   port: number
 }
 
 export type SettingsUpdate = Partial<
-  Pick<Settings, 'gallery_root' | 'thumb_dir' | 'thumb_max_size' | 'watch_enabled' | 'watch_debounce_seconds'>
+  Pick<
+    Settings,
+    'gallery_root' | 'thumb_dir' | 'thumb_max_size' | 'watch_enabled' | 'watch_debounce_seconds' | 'log_level'
+  >
 >
 
 export type SettingsSaveResult = Settings & {

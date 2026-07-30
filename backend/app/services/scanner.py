@@ -340,6 +340,12 @@ class Scanner:
         else:
             node_type = constants.CONTAINER
 
+        cover = images[0] if images else None
+        if node_type == constants.CONTAINER and not cover:
+            prev = existing.get(rel)
+            if prev and prev.cover_rel_path:
+                cover = prev.cover_rel_path
+
         return {
             "path": rel,
             "name": root.name if not rel else current.name,
@@ -347,6 +353,6 @@ class Scanner:
             "source_type": constants.SOURCE_FOLDER,
             "image_count": len(images),
             "subdir_count": len(subdirs),
-            "cover_rel_path": images[0] if images else None,
+            "cover_rel_path": cover,
             "dir_mtime": current.stat().st_mtime,
         }

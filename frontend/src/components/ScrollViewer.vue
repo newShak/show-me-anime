@@ -10,12 +10,13 @@
         <el-button text :type="mode === 'scroll' ? 'primary' : undefined" @click="emit('mode-change', 'scroll')">
           滚动
         </el-button>
+        <el-button text @click="toggleThumbs">{{ thumbsVisible ? '隐藏预览' : '显示预览' }}</el-button>
       </div>
       <span class="page">{{ activePage + 1 }} / {{ total }}</span>
     </header>
 
     <div class="body">
-      <aside class="thumbs" ref="thumbRef" @scroll="onThumbScroll">
+      <aside v-show="thumbsVisible" class="thumbs" ref="thumbRef" @scroll="onThumbScroll">
         <div class="thumbs-phantom" :style="{ height: `${thumbTotalHeight}px` }">
           <div class="thumbs-window" :style="{ transform: `translateY(${thumbOffset}px)` }">
             <button
@@ -46,7 +47,7 @@
       </main>
     </div>
 
-    <footer class="hint">左侧缩略图快速跳转 · ↑ ↓ 翻页 · Esc 退出</footer>
+    <footer class="hint">{{ thumbsVisible ? '左侧缩略图快速跳转 · ' : '' }}↑ ↓ 翻页 · Esc 退出</footer>
   </div>
 </template>
 
@@ -60,6 +61,9 @@ const THUMB_GAP = 8
 const THUMB_IMG_HEIGHT = Math.round((100 * 4) / 3)
 const THUMB_ITEM_HEIGHT = THUMB_IMG_HEIGHT + THUMB_GAP
 const THUMB_OVERSCAN = 4
+const THUMBS_VISIBLE_KEY = 'reader-scroll-thumbs'
+
+const readThumbsVisible = () => localStorage.getItem(THUMBS_VISIBLE_KEY) !== '0'
 
 const props = defineProps<{
   nodeId: number
@@ -83,6 +87,13 @@ const activePage = ref(props.page)
 const scrolling = ref(false)
 const thumbScrollTop = ref(0)
 const thumbViewHeight = ref(0)
+const thumbsVisible = ref(readThumbsVisible())
+
+const toggleThumbs = () => {
+  thumbsVisible.value = !thumbsVisible.value
+  localStorage.setItem(THUMBS_VISIBLE_KEY, thumbsVisible.value ? '1' : '0')
+  if (thumbsVisible.value) nextTick(syncThumbViewport)
+}
 
 const thumbTotalHeight = computed(() => THUMB_PAD * 2 + props.total * THUMB_ITEM_HEIGHT)
 

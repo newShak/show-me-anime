@@ -18,6 +18,18 @@ def test_save_settings_thumb_size(client, tmp_path, monkeypatch):
     assert get_res.json()["thumb_max_size"] == 512
 
 
+def test_save_settings_log_level(client, tmp_path, monkeypatch):
+    settings_json = tmp_path / "settings.json"
+    monkeypatch.setattr("app.config.SETTINGS_JSON", settings_json)
+
+    res = client.put("/api/settings", json={"log_level": "DEBUG"})
+    assert res.status_code == 200
+    assert res.json()["log_level"] == "DEBUG"
+
+    reload_settings()
+    assert client.get("/api/settings").json()["log_level"] == "DEBUG"
+
+
 def test_save_settings_invalid_path(client, tmp_path, monkeypatch):
     settings_json = tmp_path / "settings.json"
     monkeypatch.setattr("app.config.SETTINGS_JSON", settings_json)

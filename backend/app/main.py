@@ -13,10 +13,10 @@ from starlette.responses import FileResponse
 from app.api import health, nodes, scan, search, settings as settings_api, tags, tasks
 from app.config import get_settings
 from app.db.session import init_db
-from app.logging_config import setup_logging
+from app.logging_config import set_log_level, setup_logging
 from app.services.watcher import start_gallery_watcher, stop_gallery_watcher
 
-setup_logging()
+setup_logging(get_settings().log_level)
 logger = logging.getLogger(__name__)
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -38,11 +38,13 @@ class SPAStaticFiles(StaticFiles):
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     settings = get_settings()
+    set_log_level(settings.log_level)
     logger.info(
-        "starting gallery_root=%s thumb_dir=%s watch=%s db=%s",
+        "starting gallery_root=%s thumb_dir=%s watch=%s log_level=%s db=%s",
         settings.gallery_root,
         settings.thumb_dir,
         settings.watch_enabled,
+        settings.log_level,
         settings.database_url,
     )
     init_db()

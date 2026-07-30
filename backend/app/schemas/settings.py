@@ -1,6 +1,10 @@
 """配置相关 DTO。"""
 
+from typing import Literal
+
 from pydantic import BaseModel, Field
+
+LogLevel = Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]
 
 
 class SettingsResponse(BaseModel):
@@ -11,6 +15,7 @@ class SettingsResponse(BaseModel):
     watch_enabled: bool
     watch_debounce_seconds: int
     album_list_cache_ttl: int
+    log_level: LogLevel = "INFO"
     host: str
     port: int
 
@@ -21,6 +26,7 @@ class SettingsUpdate(BaseModel):
     thumb_max_size: int | None = Field(default=None, ge=64, le=2000)
     watch_enabled: bool | None = None
     watch_debounce_seconds: int | None = Field(default=None, ge=1, le=60)
+    log_level: LogLevel | None = None
 
 
 class SettingsSaveResponse(SettingsResponse):

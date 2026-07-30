@@ -14,6 +14,16 @@ logger = logging.getLogger(__name__)
 _lock = threading.Lock()
 
 
+def _scan_hint_paths(changed_paths: list[str] | None, limit: int = 10) -> str:
+    if not changed_paths:
+        return "[]"
+    unique = list(dict.fromkeys(changed_paths))
+    if len(unique) <= limit:
+        return str(unique)
+    head = ", ".join(repr(p) for p in unique[:limit])
+    return f"[{head}, ... +{len(unique) - limit} more]"
+
+
 def run_scan(
     source: str = "manual",
     changed_paths: list[str] | None = None,
@@ -24,7 +34,7 @@ def run_scan(
         logger.warning("scan skipped source=%s reason=lock_held", source)
         return None
 
-    logger.info("scan started source=%s mode=%s hints=%s", source, mode, len(changed_paths or []))
+    logger.info("scan started source=%s mode=%s hints=%s paths=%s", source, mode, len(changed_paths or []), _scan_hint_paths(changed_paths))
     started = time.time()
     try:
         db = SessionLocal(bind=get_engine())

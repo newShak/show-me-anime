@@ -2,14 +2,30 @@
 
 import logging
 import threading
+import time
 
 from watchdog.events import FileSystemEventHandler
 from watchdog.observers import Observer
 
 from app.config import get_settings
-from app.services.scan_runner import run_scan
+from app.services.scan_runner import is_scan_running, run_scan
 
 logger = logging.getLogger(__name__)
+
+
+def _unique_paths(paths: list[str]) -> list[str]:
+    """去重并保持顺序。"""
+    return list(dict.fromkeys(p for p in paths if p))
+
+
+def _format_paths(paths: list[str], limit: int = 10) -> str:
+    unique = _unique_paths(paths)
+    if not unique:
+        return "[]"
+    if len(unique) <= limit:
+        return str(unique)
+    head = ", ".join(repr(p) for p in unique[:limit])
+    return f"[{head}, ... +{len(unique) - limit} more]"
 
 
 class _DebouncedHandler(FileSystemEventHandler):
@@ -18,18 +34,40 @@ class _DebouncedHandler(FileSystemEventHandler):
         self._timer: threading.Timer | None = None
         self._lock = threading.Lock()
         self._pending_paths: list[str] = []
+        self._cooldown_until = 0.0
+
+    def _scan_busy(self) -> bool:
+        return is_scan_running() or time.time() < self._cooldown_until
 
     def on_any_event(self, event) -> None:
         src = getattr(event, "src_path", None)
+        dest = getattr(event, "dest_path", None)
+        if self._scan_busy():
+            logger.debug(
+                "watchdog event ignored type=%s src=%s dest=%s reason=%s",
+                getattr(event, "event_type", "?"),
+                src,
+                dest,
+                "scan_running" if is_scan_running() else "cooldown",
+            )
+            return
         if src:
             self._pending_paths.append(src)
-        dest = getattr(event, "dest_path", None)
         if dest:
             self._pending_paths.append(dest)
+        logger.debug(
+            "watchdog event type=%s src=%s dest=%s pending=%s",
+            getattr(event, "event_type", "?"),
+            src,
+            dest,
+            len(self._pending_paths),
+        )
         self._schedule()
 
     def _schedule(self) -> None:
         with self._lock:
+            if self._scan_busy():
+                return
             if self._timer:
                 self._timer.cancel()
             self._timer = threading.Timer(self.debounce_seconds, self._trigger_scan)
@@ -38,13 +76,22 @@ class _DebouncedHandler(FileSystemEventHandler):
         logger.debug("watchdog event debounced %.1fs", self.debounce_seconds)
 
     def _trigger_scan(self) -> None:
+        if self._scan_busy():
+            return
         with self._lock:
             paths = self._pending_paths[:]
             self._pending_paths.clear()
-        logger.info("watchdog debounced scan triggered hints=%s", len(paths))
-        job = run_scan(source="watchdog", changed_paths=paths or None)
+        unique = _unique_paths(paths)
+        logger.info(
+            "watchdog debounced scan triggered hints=%s paths=%s",
+            len(unique),
+            _format_paths(unique),
+        )
+        job = run_scan(source="watchdog", changed_paths=unique or None)
         if job is None:
             logger.warning("watchdog scan skipped reason=concurrent_scan")
+            return
+        self._cooldown_until = time.time() + self.debounce_seconds
 
 
 class GalleryWatcher:
