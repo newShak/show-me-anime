@@ -21,7 +21,129 @@
 | 数据库 | SQLite + FTS5 |
 | 前端 | Vue 3 + Vite + Element Plus |
 
-## 快速开始
+## Docker 部署（推荐）
+
+镜像采用**多阶段构建**：Node 阶段编译前端，最终镜像仅含 Python 运行时与静态资源，不含 Node/npm 与构建工具。
+
+### 前置要求
+
+- [Docker](https://docs.docker.com/get-docker/) 20.10+
+- [Docker Compose](https://docs.docker.com/compose/install/) v2（可选，推荐）
+
+### 1. 准备数据目录
+
+在项目根目录执行（若已有可跳过）：
+
+```bash
+mkdir -p gallery data
+```
+
+将图片放入 `gallery/` 子文件夹，例如 `gallery/comic-a/1.jpg`。
+
+### 2. 使用 Docker Compose 启动
+
+```bash
+docker compose up -d --build
+```
+
+浏览器打开 http://localhost:8000
+
+常用命令：
+
+```bash
+# 查看日志
+docker compose logs -f
+
+# 停止
+docker compose down
+
+# 重新构建并启动
+docker compose up -d --build
+```
+
+### 3. 仅使用 Docker 命令
+
+```bash
+docker build -t show-me-anime:latest .
+
+docker run -d \
+  --name show-me-anime \
+  -p 8000:8000 \
+  -v "%cd%\gallery:/data/gallery" \
+  -v "%cd%\data:/app/data" \
+  -e GALLERY_ROOT=/data/gallery \
+  -e THUMB_DIR=/app/data/thumbs \
+  -e DATABASE_URL=sqlite:////app/data/gallery.db \
+  show-me-anime:latest
+```
+
+Linux / macOS 将 `%cd%` 换为 `$(pwd)`。
+
+### 4. 首次使用：扫描索引
+
+容器启动后，在管理页点击「扫描」，或执行：
+
+```bash
+curl -X POST http://localhost:8000/api/scan/trigger
+```
+
+### Docker 目录与卷说明
+
+| 宿主机路径 | 容器路径 | 说明 |
+|-----------|----------|------|
+| `./gallery` | `/data/gallery` | 图片/压缩包源目录 |
+| `./data` | `/app/data` | SQLite 数据库、缩略图缓存、`settings.json` |
+
+环境变量可在 `docker-compose.yml` 的 `environment` 中修改；也可在 `./data/settings.json` 写入配置（优先级更高）。
+
+### 5. 从 Docker Hub 拉取（无需本地构建）
+
+预构建镜像：[yaliyhub/show-me-anime](https://hub.docker.com/r/yaliyhub/show-me-anime)
+
+```bash
+mkdir -p gallery data
+
+docker pull yaliyhub/show-me-anime:latest
+
+docker run -d \
+  --name show-me-anime \
+  -p 8000:8000 \
+  -v "%cd%\gallery:/data/gallery" \
+  -v "%cd%\data:/app/data" \
+  -e GALLERY_ROOT=/data/gallery \
+  -e THUMB_DIR=/app/data/thumbs \
+  -e DATABASE_URL=sqlite:////app/data/gallery.db \
+  yaliyhub/show-me-anime:latest
+```
+
+或使用 Compose（`docker-compose.yml` 已配置 Hub 镜像名，可直接 `pull`）：
+
+```bash
+docker compose pull
+docker compose up -d
+```
+
+### 6. 构建并推送到 Docker Hub
+
+Hub 用户名须**全小写**，推送时使用 `docker.io/` 前缀：
+
+```bash
+docker compose build
+
+docker tag show-me-anime:latest docker.io/yaliyhub/show-me-anime:latest
+docker push docker.io/yaliyhub/show-me-anime:latest
+```
+
+可选：同时打版本号 tag，便于回滚：
+
+```bash
+docker tag show-me-anime:latest docker.io/yaliyhub/show-me-anime:1.0.0
+docker push docker.io/yaliyhub/show-me-anime:1.0.0
+```
+
+> 注意：不要使用 `yaliyHub` 这类大小写混写 tag，Docker 可能将其误判为 registry 地址导致推送失败。
+
+## 本地开发
 
 ### 1. 后端
 
@@ -43,20 +165,14 @@ npm install
 npm run dev
 ```
 
-浏览器打开 http://127.0.0.1:5173 ，首页可进入画廊；浏览页 http://127.0.0.1:5173/browse 。
+浏览器打开 http://127.0.0.1:5173 ，Vite 会将 `/api` 代理到后端。
 
-### 4. 扫描与浏览（Phase 1）
+生产构建后也可由后端托管静态文件（与 Docker 镜像行为一致）：
 
 ```bash
-# 将图片放入 gallery/ 目录，例如 gallery/comic-a/1.jpg
-# 触发扫描
-curl -X POST http://127.0.0.1:8000/api/scan/trigger
-
-# 查看顶层分类/相册
-curl http://127.0.0.1:8000/api/nodes
-
-# 查看相册内图片列表（自然排序）
-curl http://127.0.0.1:8000/api/nodes/{id}/images
+cd frontend && npm run build
+cd ../backend && uvicorn app.main:app --host 0.0.0.0 --port 8000
+# 访问 http://127.0.0.1:8000
 ```
 
 ### 3. 测试
@@ -74,6 +190,8 @@ cd backend
 |----------|--------|------|
 | `GALLERY_ROOT` | `./gallery` | 图片根目录 |
 | `THUMB_DIR` | `./data/thumbs` | 缩略图缓存目录 |
+| `DATABASE_URL` | `sqlite:///./data/gallery.db` | 数据库连接 |
+| `WATCH_ENABLED` | `true` | 是否监听画廊目录变更 |
 
 未配置时使用默认值。可将图片放入 `./gallery/` 目录进行试用。
 

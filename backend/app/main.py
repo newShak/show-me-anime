@@ -1,14 +1,33 @@
 """FastAPI 应用入口。"""
 
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+from starlette.exceptions import HTTPException as StarletteHTTPException
+from starlette.responses import FileResponse
 
 from app.api import health, nodes, scan, search, settings as settings_api, tags
 from app.config import get_settings
 from app.db.session import init_db
 from app.services.watcher import start_gallery_watcher, stop_gallery_watcher
+
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+STATIC_DIR = PROJECT_ROOT / "frontend" / "dist"
+
+
+class SPAStaticFiles(StaticFiles):
+    """静态资源 + Vue Router history 回退到 index.html。"""
+
+    async def get_response(self, path: str, scope):
+        try:
+            return await super().get_response(path, scope)
+        except StarletteHTTPException as exc:
+            if exc.status_code != 404:
+                raise
+            return FileResponse(STATIC_DIR / "index.html")
 
 
 @asynccontextmanager
@@ -36,3 +55,6 @@ app.include_router(nodes.router, prefix="/api")
 app.include_router(scan.router, prefix="/api")
 app.include_router(search.router, prefix="/api")
 app.include_router(tags.router, prefix="/api")
+
+if STATIC_DIR.is_dir():
+    app.mount("/", SPAStaticFiles(directory=STATIC_DIR, html=True), name="spa")

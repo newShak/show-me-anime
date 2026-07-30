@@ -1,0 +1,18 @@
+services:
+  show-me-anime:
+    build: .
+    image: yaliyhub/show-me-anime:latest
+    container_name: show-me-anime
+    ports:
+      - "8000:8000"
+    environment:
+      GALLERY_ROOT: /data/gallery
+      THUMB_DIR: /app/data/thumbs
+      DATABASE_URL: sqlite:////app/data/gallery.db
+      WATCH_ENABLED: "true"
+    volumes:
+      # 画廊图片目录（只读亦可：末尾加 :ro）
+      - ./gallery:/data/gallery
+      # 数据库、缩略图、settings.json
+      - ./data:/app/data
+    restart: unless-stopped
