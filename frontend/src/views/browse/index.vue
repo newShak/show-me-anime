@@ -31,7 +31,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import AlbumGrid from '@/components/AlbumGrid.vue'
 import BreadcrumbNav from '@/components/BreadcrumbNav.vue'
 import ImageGrid from '@/components/ImageGrid.vue'
@@ -120,7 +120,27 @@ const openReader = (page = 0) => {
 const startRead = async () => {
   if (!currentNode.value) return
   const { data } = await fetchProgress(currentNode.value.id)
-  openReader(data.page_index)
+  const progress = data.page_index
+
+  if (progress <= 0) {
+    openReader(0)
+    return
+  }
+
+  try {
+    await ElMessageBox.confirm(
+      `上次阅读至第 ${progress + 1} / ${images.value.length} 页`,
+      '开始阅读',
+      {
+        confirmButtonText: `从进度继续（第 ${progress + 1} 页）`,
+        cancelButtonText: '从头开始',
+        distinguishCancelAndClose: true,
+      },
+    )
+    openReader(progress)
+  } catch (action) {
+    if (action === 'cancel') openReader(0)
+  }
 }
 
 const onScan = async () => {
