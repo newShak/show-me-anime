@@ -15,18 +15,23 @@
     </header>
 
     <div class="body">
-      <aside class="thumbs" ref="thumbRef">
-        <button
-          v-for="i in total"
-          :key="i"
-          class="thumb"
-          :class="{ active: activePage === i - 1 }"
-          :data-index="i - 1"
-          @click="scrollTo(i - 1)"
-        >
-          <img :src="imageThumbUrl(nodeId, i - 1)" :alt="`${i}`" loading="lazy" />
-          <span>{{ i }}</span>
-        </button>
+      <aside class="thumbs" ref="thumbRef" @scroll="onThumbScroll">
+        <div class="thumbs-phantom" :style="{ height: `${thumbTotalHeight}px` }">
+          <div class="thumbs-window" :style="{ transform: `translateY(${thumbOffset}px)` }">
+            <button
+              v-for="index in visibleThumbIndices"
+              :key="index"
+              class="thumb"
+              :class="{ active: activePage === index }"
+              :data-index="index"
+              :style="{ height: `${THUMB_IMG_HEIGHT}px` }"
+              @click="scrollTo(index)"
+            >
+              <img :src="imageThumbUrl(nodeId, index)" :alt="`${index + 1}`" />
+              <span>{{ index + 1 }}</span>
+            </button>
+          </div>
+        </div>
       </aside>
 
       <main class="scroll" ref="scrollRef" @scroll="onScroll">
@@ -46,9 +51,15 @@
 </template>
 
 <script setup lang="ts">
-import { nextTick, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { imageFileUrl, imageThumbUrl } from '@/api/nodes'
 import type { ReaderMode } from '@/types/reader'
+
+const THUMB_PAD = 8
+const THUMB_GAP = 8
+const THUMB_IMG_HEIGHT = Math.round((100 * 4) / 3)
+const THUMB_ITEM_HEIGHT = THUMB_IMG_HEIGHT + THUMB_GAP
+const THUMB_OVERSCAN = 4
 
 const props = defineProps<{
   nodeId: number
@@ -70,14 +81,52 @@ const thumbRef = ref<HTMLElement | null>(null)
 const pageRefs = ref<(HTMLElement | null)[]>([])
 const activePage = ref(props.page)
 const scrolling = ref(false)
+const thumbScrollTop = ref(0)
+const thumbViewHeight = ref(0)
+
+const thumbTotalHeight = computed(() => THUMB_PAD * 2 + props.total * THUMB_ITEM_HEIGHT)
+
+const thumbRange = computed(() => {
+  if (!props.total) return { start: 0, end: 0, offset: THUMB_PAD }
+  const viewH = thumbViewHeight.value || 600
+  const start = Math.max(
+    0,
+    Math.floor((thumbScrollTop.value - THUMB_PAD) / THUMB_ITEM_HEIGHT) - THUMB_OVERSCAN,
+  )
+  const visible = Math.ceil(viewH / THUMB_ITEM_HEIGHT) + THUMB_OVERSCAN * 2
+  const end = Math.min(props.total, start + visible)
+  return { start, end, offset: THUMB_PAD + start * THUMB_ITEM_HEIGHT }
+})
+
+const visibleThumbIndices = computed(() => {
+  const { start, end } = thumbRange.value
+  return Array.from({ length: end - start }, (_, i) => start + i)
+})
+
+const thumbOffset = computed(() => thumbRange.value.offset)
 
 const setPageRef = (index: number, el: HTMLElement | null) => {
   pageRefs.value[index] = el
 }
 
+const syncThumbViewport = () => {
+  thumbViewHeight.value = thumbRef.value?.clientHeight ?? 0
+}
+
+const onThumbScroll = () => {
+  thumbScrollTop.value = thumbRef.value?.scrollTop ?? 0
+}
+
 const scrollThumbIntoView = (index: number) => {
-  const btn = thumbRef.value?.querySelector(`[data-index="${index}"]`)
-  btn?.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
+  const el = thumbRef.value
+  if (!el) return
+  const itemTop = THUMB_PAD + index * THUMB_ITEM_HEIGHT
+  const itemBottom = itemTop + THUMB_ITEM_HEIGHT
+  if (itemTop < el.scrollTop) el.scrollTop = Math.max(0, itemTop - THUMB_PAD)
+  else if (itemBottom > el.scrollTop + el.clientHeight) {
+    el.scrollTop = itemBottom - el.clientHeight + THUMB_PAD
+  }
+  thumbScrollTop.value = el.scrollTop
 }
 
 const scrollTo = (index: number, smooth = true) => {
@@ -124,6 +173,8 @@ const onKeydown = (e: KeyboardEvent) => {
   if (e.key === 'Escape') emit('close')
 }
 
+let resizeObserver: ResizeObserver | undefined
+
 watch(
   () => props.page,
   (p) => {
@@ -133,11 +184,23 @@ watch(
   },
 )
 
+watch(
+  () => props.total,
+  () => nextTick(syncThumbViewport),
+)
+
 onMounted(async () => {
   rootRef.value?.focus()
+  syncThumbViewport()
+  if (thumbRef.value) {
+    resizeObserver = new ResizeObserver(syncThumbViewport)
+    resizeObserver.observe(thumbRef.value)
+  }
   await nextTick()
   scrollTo(props.page, false)
 })
+
+onUnmounted(() => resizeObserver?.disconnect())
 </script>
 
 <style scoped>
@@ -192,7 +255,20 @@ onMounted(async () => {
   overflow-y: auto;
   background: rgba(0, 0, 0, 0.45);
   border-right: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.thumbs-phantom {
+  position: relative;
+  width: 100%;
+}
+
+.thumbs-window {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
   padding: 8px 6px;
+  will-change: transform;
 }
 
 .thumb {
@@ -208,6 +284,10 @@ onMounted(async () => {
   position: relative;
 }
 
+.thumb:last-child {
+  margin-bottom: 0;
+}
+
 .thumb.active {
   border-color: var(--el-color-primary);
 }
@@ -215,7 +295,7 @@ onMounted(async () => {
 .thumb img {
   display: block;
   width: 100%;
-  aspect-ratio: 3 / 4;
+  height: 100%;
   object-fit: cover;
   background: #222;
 }
