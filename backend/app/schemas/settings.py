@@ -26,3 +26,8 @@ class SettingsUpdate(BaseModel):
 class SettingsSaveResponse(SettingsResponse):
     message: str | None = None
     needs_rescan: bool = False
+
+
+class ThumbRebuildResponse(BaseModel):
+    deleted: int
+    message: str

@@ -16,3 +16,13 @@ class TagCreate(BaseModel):
 
 class NodeTagsUpdate(BaseModel):
     tag_ids: list[int]
+
+
+class NodeTagsBatchAdd(BaseModel):
+    node_ids: list[int] = Field(min_length=1)
+    tag_ids: list[int] = Field(min_length=1)
+
+
+class NodeTagsItem(BaseModel):
+    node_id: int
+    tags: list[TagResponse]

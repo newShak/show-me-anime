@@ -5,6 +5,7 @@ from pathlib import Path
 
 from sqlalchemy.orm import Session
 
+from app import constants
 from app.config import Settings, get_settings
 from app.db.models import Node, NodeTag, ReadProgress
 from app.services.search import remove_node_search
@@ -20,12 +21,16 @@ def resolve_node_dir(gallery_root: Path, node: Node) -> Path:
     if not node.path:
         raise ValueError("不能删除画廊根目录")
     root = gallery_root.resolve()
-    dir_path = (gallery_root / node.path).resolve()
-    if not str(dir_path).startswith(str(root)):
+    target = (gallery_root / node.path).resolve()
+    if not str(target).startswith(str(root)):
         raise ValueError(f"非法路径: {node.path}")
-    if not dir_path.is_dir():
+    if node.source_type == constants.SOURCE_ZIP:
+        if not target.is_file():
+            raise ValueError(f"压缩包不存在: {node.path}")
+        return target
+    if not target.is_dir():
         raise ValueError(f"目录不存在: {node.path}")
-    return dir_path
+    return target
 
 
 def collect_subtree_nodes(db: Session, path: str) -> list[Node]:
@@ -35,10 +40,13 @@ def collect_subtree_nodes(db: Session, path: str) -> list[Node]:
 
 def delete_node_subtree(db: Session, node: Node, settings: Settings | None = None) -> int:
     settings = settings or get_settings()
-    dir_path = resolve_node_dir(settings.gallery_root, node)
+    target = resolve_node_dir(settings.gallery_root, node)
     targets = collect_subtree_nodes(db, node.path)
 
-    shutil.rmtree(dir_path)
+    if node.source_type == constants.SOURCE_ZIP:
+        target.unlink()
+    else:
+        shutil.rmtree(target)
 
     ids = [n.id for n in targets]
     if ids:
@@ -51,7 +59,7 @@ def delete_node_subtree(db: Session, node: Node, settings: Settings | None = Non
 
     parent_id = node.parent_id
     db.flush()
-    if parent_id is not None:
+    if parent_id is not None and node.source_type != constants.SOURCE_ZIP:
         parent = db.get(Node, parent_id)
         if parent is not None:
             parent.subdir_count = max(0, parent.subdir_count - 1)

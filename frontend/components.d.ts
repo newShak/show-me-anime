@@ -24,6 +24,9 @@ declare module 'vue' {
     ElDescriptions: typeof import('element-plus/es')['ElDescriptions']
     ElDescriptionsItem: typeof import('element-plus/es')['ElDescriptionsItem']
     ElDialog: typeof import('element-plus/es')['ElDialog']
+    ElDropdown: typeof import('element-plus/es')['ElDropdown']
+    ElDropdownItem: typeof import('element-plus/es')['ElDropdownItem']
+    ElDropdownMenu: typeof import('element-plus/es')['ElDropdownMenu']
     ElEmpty: typeof import('element-plus/es')['ElEmpty']
     ElForm: typeof import('element-plus/es')['ElForm']
     ElFormItem: typeof import('element-plus/es')['ElFormItem']
@@ -47,5 +50,7 @@ declare module 'vue' {
     RouterView: typeof import('vue-router')['RouterView']
     ScrollViewer: typeof import('./src/components/ScrollViewer.vue')['default']
     SearchBar: typeof import('./src/components/SearchBar.vue')['default']
+    TagPickerDialog: typeof import('./src/components/TagPickerDialog.vue')['default']
+    TagSelect: typeof import('./src/components/TagSelect.vue')['default']
   }
 }

@@ -8,6 +8,7 @@ export type SearchResultItem = {
 
 export type SearchResponse = {
   q: string
+  tag_ids: number[]
   total: number
   items: SearchResultItem[]
 }

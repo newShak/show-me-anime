@@ -38,3 +38,19 @@ def test_progress_out_of_range(client, gallery):
 
     res = client.put(f"/api/nodes/{node_id}/progress", json={"page_index": 5})
     assert res.status_code == 400
+
+
+def test_batch_progress(client, gallery):
+    album = gallery / "batch-comic"
+    album.mkdir()
+    _make_jpeg(album / "1.jpg")
+    _make_jpeg(album / "2.jpg")
+    _make_jpeg(album / "3.jpg")
+
+    client.post("/api/scan/trigger")
+    node_id = client.get("/api/nodes").json()[0]["id"]
+    client.put(f"/api/nodes/{node_id}/progress", json={"page_index": 1})
+
+    res = client.get("/api/nodes/progress", params={"ids": str(node_id)})
+    assert res.status_code == 200
+    assert res.json()[0]["page_index"] == 1

@@ -1,12 +1,12 @@
 """缩略图按需生成与缓存。"""
 
 import hashlib
+from io import BytesIO
 from pathlib import Path
 
 from PIL import Image
 
 from app.config import Settings, get_settings
-
 
 def thumb_cache_path(thumb_dir: Path, node_path: str, filename: str) -> Path:
     key = hashlib.sha256(f"{node_path}/{filename}".encode()).hexdigest()
@@ -34,3 +34,40 @@ def get_or_create_thumbnail(
     settings = settings or get_settings()
     dest = thumb_cache_path(settings.thumb_dir, node_path, filename)
     return ensure_thumbnail(source, dest, settings.thumb_max_size)
+
+
+def ensure_thumbnail_bytes(data: bytes, dest: Path, max_size: int, source_mtime: float) -> Path:
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    if dest.exists() and dest.stat().st_mtime >= source_mtime:
+        return dest
+
+    with Image.open(BytesIO(data)) as img:
+        img = img.convert("RGB")
+        img.thumbnail((max_size, max_size))
+        img.save(dest, format="WEBP", quality=85)
+    return dest
+
+
+def get_or_create_thumbnail_bytes(
+    data: bytes,
+    node_path: str,
+    filename: str,
+    source_mtime: float,
+    settings: Settings | None = None,
+) -> Path:
+    settings = settings or get_settings()
+    dest = thumb_cache_path(settings.thumb_dir, node_path, filename)
+    return ensure_thumbnail_bytes(data, dest, settings.thumb_max_size, source_mtime)
+
+
+def clear_thumbnail_cache(settings: Settings | None = None) -> int:
+    """删除缩略图缓存目录内全部 .webp，返回清除数量。"""
+    settings = settings or get_settings()
+    thumb_dir = settings.thumb_dir
+    if not thumb_dir.is_dir():
+        return 0
+    deleted = 0
+    for path in thumb_dir.glob("*.webp"):
+        path.unlink(missing_ok=True)
+        deleted += 1
+    return deleted

@@ -2,9 +2,10 @@
 
 import mimetypes
 import time
+from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
 from sqlalchemy.orm import Session
 
 from app import constants
@@ -22,13 +23,32 @@ from app.schemas.node import (
 )
 from app.schemas.progress import ProgressResponse, ProgressUpdate
 from app.services.album_reader import AlbumReader, get_album_reader
-from app.services.media import resolve_cover_file, resolve_image_file
+from app.services.media import ImageSource, resolve_cover_source, resolve_image_source
 from app.services.node_admin import sync_node_search_index
 from app.services.node_delete import delete_nodes
 from app.services.node_sort import SORT_FIELDS, SORT_ORDERS, sort_nodes
-from app.services.thumbnail import get_or_create_thumbnail
+from app.services.thumbnail import get_or_create_thumbnail, get_or_create_thumbnail_bytes
 
 router = APIRouter(tags=["nodes"])
+
+
+def _image_response(source: ImageSource) -> FileResponse | Response:
+    media_type = mimetypes.guess_type(source.filename)[0] or "application/octet-stream"
+    if source.data is not None:
+        return Response(content=source.data, media_type=media_type)
+    return FileResponse(source.path, media_type=media_type, filename=source.filename)
+
+
+def _thumb_path(node: Node, source: ImageSource, settings) -> Path:
+    if source.path is not None:
+        return get_or_create_thumbnail(source.path, node.path, source.filename, settings)
+    return get_or_create_thumbnail_bytes(
+        source.data or b"",
+        node.path,
+        source.filename,
+        source.mtime,
+        settings,
+    )
 
 
 @router.get("/nodes", response_model=list[NodeResponse])
@@ -49,6 +69,28 @@ def list_nodes(
     else:
         query = query.filter(Node.parent_id == parent_id)
     return sort_nodes(query.all(), sort_by, sort_order)
+
+
+@router.get("/nodes/progress", response_model=list[ProgressResponse])
+def list_nodes_progress(
+    ids: str = Query(..., description="逗号分隔的 node id"),
+    db: Session = Depends(get_db),
+) -> list[ProgressResponse]:
+    """批量读取相册阅读进度。"""
+    node_ids = [int(part) for part in ids.split(",") if part.strip().isdigit()]
+    if not node_ids:
+        return []
+
+    rows = db.query(ReadProgress).filter(ReadProgress.node_id.in_(node_ids)).all()
+    row_map = {row.node_id: row for row in rows}
+    return [
+        ProgressResponse(
+            node_id=nid,
+            page_index=row_map[nid].page_index if nid in row_map else 0,
+            updated_at=row_map[nid].updated_at if nid in row_map else None,
+        )
+        for nid in node_ids
+    ]
 
 
 @router.get("/nodes/{node_id}", response_model=NodeResponse)
@@ -128,19 +170,18 @@ def list_node_images(
     )
 
 
-@router.get("/nodes/{node_id}/images/{index}/file")
+@router.get("/nodes/{node_id}/images/{index}/file", response_model=None)
 def get_image_file(
     node_id: int,
     index: int,
     db: Session = Depends(get_db),
     reader: AlbumReader = Depends(get_album_reader),
-) -> FileResponse:
+):
     node = db.get(Node, node_id)
     if node is None:
         raise HTTPException(status_code=404, detail="node not found")
-    file_path, filename = resolve_image_file(node, index, db, reader)
-    media_type = mimetypes.guess_type(filename)[0] or "application/octet-stream"
-    return FileResponse(file_path, media_type=media_type, filename=filename)
+    source = resolve_image_source(node, index, db, reader)
+    return _image_response(source)
 
 
 @router.get("/nodes/{node_id}/images/{index}/thumb")
@@ -154,8 +195,8 @@ def get_image_thumb(
     if node is None:
         raise HTTPException(status_code=404, detail="node not found")
     settings = get_settings()
-    file_path, filename = resolve_image_file(node, index, db, reader, settings)
-    thumb_path = get_or_create_thumbnail(file_path, node.path, filename, settings)
+    source = resolve_image_source(node, index, db, reader, settings)
+    thumb_path = _thumb_path(node, source, settings)
     return FileResponse(thumb_path, media_type="image/webp")
 
 
@@ -169,8 +210,8 @@ def get_cover_thumb(
     if node is None:
         raise HTTPException(status_code=404, detail="node not found")
     settings = get_settings()
-    file_path, filename = resolve_cover_file(node, db, reader, settings)
-    thumb_path = get_or_create_thumbnail(file_path, node.path, filename, settings)
+    source = resolve_cover_source(node, db, reader, settings)
+    thumb_path = _thumb_path(node, source, settings)
     return FileResponse(thumb_path, media_type="image/webp")
 
 

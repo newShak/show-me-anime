@@ -1,7 +1,7 @@
 import type { ReaderMode } from '@/types/reader'
 
 const MODE_KEY = 'reader-mode'
-const DEFAULT: ReaderMode = 'page'
+const DEFAULT: ReaderMode = 'scroll'
 
 /** 读取本地保存的阅读模式 */
 export const getStoredReaderMode = (): ReaderMode =>

@@ -22,9 +22,7 @@
         </el-select>
       </el-form-item>
       <el-form-item label="标签">
-        <el-select v-model="form.tag_ids" multiple filterable style="width: 100%" placeholder="选择标签">
-          <el-option v-for="tag in allTags" :key="tag.id" :label="tag.name" :value="tag.id" />
-        </el-select>
+        <TagSelect v-model="form.tag_ids" :tags="allTags" />
       </el-form-item>
     </el-form>
 
@@ -39,6 +37,7 @@
 import { ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import { fetchNodeImages, patchNode } from '@/api/nodes'
+import TagSelect from '@/components/TagSelect.vue'
 import { fetchNodeTags, fetchTags, setNodeTags } from '@/api/tags'
 import type { ImageItem, NodeItem } from '@/types/node'
 import type { TagItem } from '@/types/tag'

@@ -1,12 +1,13 @@
 <template>
   <div class="search-bar" :class="{ full }">
     <el-input
-      v-model="keyword"
+      :model-value="keyword"
       clearable
       :placeholder="placeholder"
       size="large"
-      @keyup.enter="submit"
-      @clear="emit('clear')"
+      @update:model-value="onInput"
+      @keyup.enter="flushSearch"
+      @clear="onClear"
     >
       <template #prefix>
         <el-icon><Search /></el-icon>
@@ -26,17 +27,36 @@ const props = withDefaults(
 const emit = defineEmits<{ search: [q: string]; clear: [] }>()
 
 const keyword = ref(props.modelValue ?? '')
+let timer: ReturnType<typeof setTimeout> | null = null
 
 watch(
   () => props.modelValue,
   (v) => {
-    if (v != null) keyword.value = v
+    if (v != null && v !== keyword.value) keyword.value = v
   },
 )
 
-const submit = () => {
-  const q = keyword.value.trim()
-  if (q) emit('search', q)
+const emitSearch = () => emit('search', keyword.value.trim())
+
+const scheduleSearch = () => {
+  if (timer) clearTimeout(timer)
+  timer = setTimeout(emitSearch, 300)
+}
+
+const onInput = (v: string) => {
+  keyword.value = v
+  scheduleSearch()
+}
+
+const flushSearch = () => {
+  if (timer) clearTimeout(timer)
+  emitSearch()
+}
+
+const onClear = () => {
+  keyword.value = ''
+  emit('clear')
+  flushSearch()
 }
 </script>
 

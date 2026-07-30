@@ -1,22 +1,36 @@
 """图片路径解析。"""
 
+import zipfile
+from dataclasses import dataclass
 from pathlib import Path
 
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
+from app import constants
 from app.config import Settings, get_settings
 from app.db.models import Node
 from app.services.album_reader import AlbumReader
+from app.services.archive_reader import read_archive_entry
 
 
-def resolve_image_file(
+@dataclass
+class ImageSource:
+    """图片数据来源：文件夹路径或压缩包内存字节。"""
+
+    filename: str
+    path: Path | None = None
+    data: bytes | None = None
+    mtime: float = 0.0
+
+
+def resolve_image_source(
     node: Node,
     index: int,
     db: Session,
     reader: AlbumReader,
     settings: Settings | None = None,
-) -> tuple[Path, str]:
+) -> ImageSource:
     if node.node_type == "container":
         raise HTTPException(status_code=400, detail="container node has no images")
 
@@ -26,29 +40,59 @@ def resolve_image_file(
         raise HTTPException(status_code=404, detail="image not found")
 
     filename = names[index]
+    if node.source_type == constants.SOURCE_ZIP:
+        return _resolve_archive_source(settings, node.path, filename)
+
     dir_path = (settings.gallery_root / node.path).resolve()
     file_path = (dir_path / filename).resolve()
     if not str(file_path).startswith(str(dir_path)):
         raise HTTPException(status_code=400, detail="invalid path")
     if not file_path.is_file():
         raise HTTPException(status_code=404, detail="image not found")
-    return file_path, filename
+    return ImageSource(
+        filename=Path(filename).name,
+        path=file_path,
+        mtime=file_path.stat().st_mtime,
+    )
 
 
-def resolve_cover_file(
+def resolve_cover_source(
     node: Node,
     db: Session,
     reader: AlbumReader,
     settings: Settings | None = None,
-) -> tuple[Path, str]:
+) -> ImageSource:
     settings = settings or get_settings()
     names = reader.list_images(db, node)
     if not names:
         raise HTTPException(status_code=404, detail="no cover image")
 
     filename = node.cover_rel_path if node.cover_rel_path in names else names[0]
+    if node.source_type == constants.SOURCE_ZIP:
+        return _resolve_archive_source(settings, node.path, filename)
+
     dir_path = (settings.gallery_root / node.path).resolve()
     file_path = (dir_path / filename).resolve()
     if not file_path.is_file():
         raise HTTPException(status_code=404, detail="cover not found")
-    return file_path, filename
+    return ImageSource(
+        filename=Path(filename).name,
+        path=file_path,
+        mtime=file_path.stat().st_mtime,
+    )
+
+
+def _resolve_archive_source(settings: Settings, node_path: str, entry_name: str) -> ImageSource:
+    archive_path = (settings.gallery_root / node_path).resolve()
+    root = settings.gallery_root.resolve()
+    if not str(archive_path).startswith(str(root)) or not archive_path.is_file():
+        raise HTTPException(status_code=404, detail="archive not found")
+    try:
+        data = read_archive_entry(archive_path, entry_name)
+    except (OSError, KeyError, zipfile.BadZipFile) as exc:
+        raise HTTPException(status_code=404, detail="image not found") from exc
+    return ImageSource(
+        filename=Path(entry_name).name,
+        data=data,
+        mtime=archive_path.stat().st_mtime,
+    )

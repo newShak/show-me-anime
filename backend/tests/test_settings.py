@@ -26,3 +26,17 @@ def test_save_settings_invalid_path(client, tmp_path, monkeypatch):
     bad.write_text("x", encoding="utf-8")
     res = client.put("/api/settings", json={"thumb_dir": str(bad)})
     assert res.status_code == 400
+
+
+def test_rebuild_thumbs(client, tmp_path, monkeypatch):
+    from app.config import get_settings
+
+    thumb_dir = get_settings().thumb_dir
+    (thumb_dir / "a.webp").write_bytes(b"x")
+    (thumb_dir / "b.webp").write_bytes(b"x")
+
+    res = client.post("/api/settings/rebuild-thumbs")
+    assert res.status_code == 200
+    body = res.json()
+    assert body["deleted"] == 2
+    assert not list(thumb_dir.glob("*.webp"))

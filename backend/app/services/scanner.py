@@ -1,6 +1,7 @@
 """目录扫描：仅索引集合（nodes），不逐张图片入库。"""
 
 import time
+import zipfile
 from pathlib import Path
 
 from sqlalchemy.orm import Session
@@ -8,10 +9,11 @@ from sqlalchemy.orm import Session
 from app import constants
 from app.config import Settings, get_settings
 from app.db.models import Node, ScanJob
+from app.services.archive_reader import list_archive_images
 from app.services.search import remove_node_search
 from app.services.node_admin import sync_node_search_index
 from app.utils.natural_sort import sorted_image_names
-from app.utils.paths import is_image_file, rel_path
+from app.utils.paths import archive_display_name, is_archive_file, is_image_file, rel_path
 
 
 class Scanner:
@@ -42,7 +44,7 @@ class Scanner:
                         path=path_str,
                         parent_id=parent_id,
                         node_type=meta["node_type"],
-                        source_type=constants.SOURCE_FOLDER,
+                        source_type=meta["source_type"],
                         image_count=meta["image_count"],
                         subdir_count=meta["subdir_count"],
                         cover_rel_path=meta["cover_rel_path"],
@@ -55,6 +57,7 @@ class Scanner:
                     changed = (
                         node.name != meta["name"]
                         or node.node_type != meta["node_type"]
+                        or node.source_type != meta["source_type"]
                         or node.parent_id != parent_id
                         or node.image_count != meta["image_count"]
                         or node.subdir_count != meta["subdir_count"]
@@ -64,6 +67,7 @@ class Scanner:
                     if changed:
                         node.name = meta["name"]
                         node.node_type = meta["node_type"]
+                        node.source_type = meta["source_type"]
                         node.parent_id = parent_id
                         node.image_count = meta["image_count"]
                         node.subdir_count = meta["subdir_count"]
@@ -109,26 +113,50 @@ class Scanner:
         root = self.settings.gallery_root
         result: list[dict] = []
 
-        for dirpath, dirnames, _filenames in root.walk(top_down=True):
+        for dirpath, _dirnames, filenames in root.walk(top_down=True):
             current = Path(dirpath)
             meta = self._analyze_dir(root, current)
-            if meta:
+            if meta and meta["path"]:
                 result.append(meta)
-            _ = dirnames
+            for fname in filenames:
+                if is_archive_file(fname):
+                    archive_meta = self._analyze_archive(root, current / fname)
+                    if archive_meta:
+                        result.append(archive_meta)
 
         return result
+
+    def _analyze_archive(self, root: Path, archive_path: Path) -> dict | None:
+        rel = rel_path(root, archive_path)
+        try:
+            images = list_archive_images(archive_path)
+        except (OSError, zipfile.BadZipFile):
+            return None
+        if not images:
+            return None
+        return {
+            "path": rel,
+            "name": archive_display_name(archive_path.name),
+            "node_type": constants.ALBUM,
+            "source_type": constants.SOURCE_ZIP,
+            "image_count": len(images),
+            "subdir_count": 0,
+            "cover_rel_path": images[0],
+            "dir_mtime": archive_path.stat().st_mtime,
+        }
 
     def _analyze_dir(self, root: Path, current: Path) -> dict | None:
         rel = "" if current == root else rel_path(root, current)
         entries = list(current.iterdir())
         subdirs = [entry.name for entry in entries if entry.is_dir()]
+        archives = [entry.name for entry in entries if entry.is_file() and is_archive_file(entry.name)]
         images = sorted_image_names(
             [entry.name for entry in entries if entry.is_file() and is_image_file(entry.name)]
         )
 
-        if not subdirs and not images:
+        if not subdirs and not images and not archives:
             return None
-        if not rel and subdirs and not images:
+        if not rel and not images and (subdirs or archives):
             return None
 
         if images and subdirs:
@@ -142,6 +170,7 @@ class Scanner:
             "path": rel,
             "name": root.name if not rel else current.name,
             "node_type": node_type,
+            "source_type": constants.SOURCE_FOLDER,
             "image_count": len(images),
             "subdir_count": len(subdirs),
             "cover_rel_path": images[0] if images else None,

@@ -12,6 +12,7 @@ class SearchResultItem(BaseModel):
 
 
 class SearchResponse(BaseModel):
-    q: str
+    q: str = ""
+    tag_ids: list[int] = []
     total: int
     items: list[SearchResultItem]

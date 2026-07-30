@@ -40,3 +40,30 @@ def test_create_duplicate_tag(client):
     client.post("/api/tags", json={"name": "dup"})
     res = client.post("/api/tags", json={"name": "dup"})
     assert res.status_code == 409
+
+
+def test_batch_add_and_remove_node_tag(client, gallery):
+    _make_album(gallery, "album-a")
+    _make_album(gallery, "album-b")
+    client.post("/api/scan/trigger")
+
+    t1 = client.post("/api/tags", json={"name": "动作"}).json()["id"]
+    t2 = client.post("/api/tags", json={"name": "冒险"}).json()["id"]
+    nodes = client.get("/api/nodes").json()
+    ids = [n["id"] for n in nodes]
+
+    batch = client.post("/api/tags/nodes/batch-add", json={"node_ids": ids, "tag_ids": [t1]})
+    assert batch.status_code == 200
+    assert batch.json()["updated"] == 2
+
+    listed = client.get("/api/tags/nodes/tags", params={"ids": ",".join(map(str, ids))})
+    assert all(t1 in [t["id"] for t in item["tags"]] for item in listed.json())
+
+    remove = client.delete(f"/api/tags/nodes/{ids[0]}/tags/{t1}")
+    assert remove.status_code == 200
+
+    batch2 = client.post(
+        "/api/tags/nodes/batch-add",
+        json={"node_ids": ids, "tag_ids": [t2]},
+    )
+    assert batch2.json()["updated"] == 2

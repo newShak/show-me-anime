@@ -42,6 +42,14 @@
               <el-button
                 text
                 size="small"
+                :disabled="!selectedIds.length"
+                @click="openTagPicker(selectedIds)"
+              >
+                标签{{ selectedIds.length ? ` (${selectedIds.length})` : '' }}
+              </el-button>
+              <el-button
+                text
+                size="small"
                 type="danger"
                 :disabled="!selectedIds.length"
                 :loading="deleting"
@@ -69,11 +77,22 @@
             </div>
 
             <BreadcrumbNav v-if="showCrumbs" :items="crumbs" @navigate="goTo" />
-            <SearchBar
-              full
-              placeholder="搜索相册名、路径..."
-              @search="(q) => $router.push({ path: '/search', query: { q } })"
-            />
+            <div class="search-row">
+              <SearchBar
+                full
+                placeholder="搜索相册名、路径..."
+                @search="onTextSearch"
+              />
+              <TagSelect
+                v-model="filterTagIds"
+                :tags="allTags"
+                clearable
+                collapse-tags
+                placeholder="按标签筛选"
+                width="200px"
+                @change="onTagFilterChange"
+              />
+            </div>
           </header>
 
           <section class="gallery">
@@ -85,8 +104,12 @@
                 :nodes="nodes"
                 :selectable="selectMode"
                 :selected-ids="selectedIds"
+                :node-tags="nodeTagsMap"
+                :progress-map="progressPercentMap"
                 @toggle="toggleSelect"
                 @open="onOpenNode"
+                @add-tags="(node) => openTagPicker([node.id])"
+                @delete="onDeleteNode"
               />
             </template>
             <template v-else>
@@ -94,8 +117,12 @@
                 :nodes="nodes"
                 :selectable="selectMode"
                 :selected-ids="selectedIds"
+                :node-tags="nodeTagsMap"
+                :progress-map="progressPercentMap"
                 @toggle="toggleSelect"
                 @open="onOpenNode"
+                @add-tags="(node) => openTagPicker([node.id])"
+                @delete="onDeleteNode"
               />
             </template>
           </section>
@@ -104,6 +131,18 @@
     </div>
 
     <NodeEditDialog v-model="editOpen" :node="currentNode" @saved="loadView(nodeId)" />
+
+    <TagPickerDialog
+      v-model="tagPickerOpen"
+      :all-tags="allTags"
+      :existing-tags="tagPickerExistingTags"
+      :exclude-tag-ids="tagPickerExcludeIds"
+      :title="tagPickerTitle"
+      :submitting="tagPickerSubmitting"
+      @confirm="onTagPickerConfirm"
+      @remove="onTagPickerRemove"
+      @tag-created="onTagCreated"
+    />
   </div>
 </template>
 
@@ -112,21 +151,24 @@ import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import SearchBar from '@/components/SearchBar.vue'
+import TagSelect from '@/components/TagSelect.vue'
 import AlbumGrid from '@/components/AlbumGrid.vue'
 import BreadcrumbNav from '@/components/BreadcrumbNav.vue'
 import ImageGrid from '@/components/ImageGrid.vue'
 import NodeTree from '@/components/NodeTree.vue'
 import NodeEditDialog from '@/components/NodeEditDialog.vue'
-import { fetchNode, fetchNodeImages, fetchNodes, fetchProgress, deleteNodes } from '@/api/nodes'
+import TagPickerDialog from '@/components/TagPickerDialog.vue'
+import { fetchNode, fetchNodeImages, fetchNodes, fetchNodesProgress, fetchProgress, deleteNodes } from '@/api/nodes'
 import { triggerScan } from '@/api/scan'
+import { batchAddNodeTags, fetchNodesTags, fetchTags, removeNodeTag } from '@/api/tags'
 import {
   getStoredSort,
   parseSortValue,
   saveSort,
   SORT_OPTIONS,
 } from '@/composables/useNodeSort'
-import { getStoredReaderMode } from '@/composables/useReaderMode'
 import type { ImageItem, NodeItem } from '@/types/node'
+import type { TagItem } from '@/types/tag'
 
 type Crumb = { id: number | null; name: string }
 
@@ -142,6 +184,13 @@ const editOpen = ref(false)
 const selectMode = ref(false)
 const selectedIds = ref<number[]>([])
 const deleting = ref(false)
+const allTags = ref<TagItem[]>([])
+const nodeTagsMap = ref<Record<number, TagItem[]>>({})
+const progressPercentMap = ref<Record<number, number>>({})
+const tagPickerOpen = ref(false)
+const tagPickerNodeIds = ref<number[]>([])
+const tagPickerSubmitting = ref(false)
+const filterTagIds = ref<number[]>([])
 const SIDEBAR_KEY = 'sidebar-collapsed'
 const sidebarCollapsed = ref(localStorage.getItem(SIDEBAR_KEY) !== '0')
 const stored = getStoredSort()
@@ -156,6 +205,18 @@ const toggleSidebar = () => {
 const onSortChange = () => {
   saveSort(nodeSort.value)
   loadView(nodeId.value)
+}
+
+const onTextSearch = (q: string) => {
+  const query: Record<string, string> = {}
+  if (q) query.q = q
+  if (filterTagIds.value.length) query.tags = filterTagIds.value.join(',')
+  router.push({ path: '/search', query })
+}
+
+const onTagFilterChange = () => {
+  if (!filterTagIds.value.length) return
+  router.push({ path: '/search', query: { tags: filterTagIds.value.join(',') } })
 }
 
 const nodeId = computed(() => {
@@ -204,6 +265,133 @@ const toggleSelect = (id: number) => {
 
 const toggleSelectAll = () => {
   selectedIds.value = allSelected.value ? [] : nodes.value.map((n) => n.id)
+}
+
+const loadNodeTags = async (ids: number[]) => {
+  if (!ids.length) {
+    nodeTagsMap.value = {}
+    return
+  }
+  const { data } = await fetchNodesTags(ids)
+  nodeTagsMap.value = Object.fromEntries(data.map((g) => [g.node_id, g.tags]))
+}
+
+const refreshTags = () => loadNodeTags(nodes.value.map((n) => n.id))
+
+const loadProgress = async () => {
+  const albums = nodes.value.filter((n) => n.node_type !== 'container' && n.image_count > 0)
+  if (!albums.length) {
+    progressPercentMap.value = {}
+    return
+  }
+  const { data } = await fetchNodesProgress(albums.map((n) => n.id))
+  const next: Record<number, number> = {}
+  for (const row of data) {
+    if (row.updated_at == null) continue
+    const node = albums.find((n) => n.id === row.node_id)
+    if (!node) continue
+    const pct = Math.min(100, Math.round(((row.page_index + 1) / node.image_count) * 100))
+    if (pct > 0) next[row.node_id] = pct
+  }
+  progressPercentMap.value = next
+}
+
+const tagPickerTitle = computed(() =>
+  tagPickerNodeIds.value.length > 1
+    ? `批量标签（${tagPickerNodeIds.value.length} 项）`
+    : '标签',
+)
+
+const tagPickerExistingTags = computed(() => {
+  const ids = tagPickerNodeIds.value
+  if (!ids.length) return []
+  const seen = new Map<number, TagItem>()
+  for (const id of ids) {
+    for (const tag of nodeTagsMap.value[id] ?? []) {
+      seen.set(tag.id, tag)
+    }
+  }
+  return [...seen.values()].sort((a, b) => a.name.localeCompare(b.name))
+})
+
+const tagPickerExcludeIds = computed(() => {
+  const ids = tagPickerNodeIds.value
+  if (!ids.length) return []
+  if (ids.length === 1) return (nodeTagsMap.value[ids[0]] ?? []).map((t) => t.id)
+  const tagSets = ids.map((id) => new Set((nodeTagsMap.value[id] ?? []).map((t) => t.id)))
+  return [...tagSets[0]].filter((tagId) => tagSets.every((s) => s.has(tagId)))
+})
+
+const openTagPicker = (nodeIds: number[]) => {
+  tagPickerNodeIds.value = nodeIds
+  tagPickerOpen.value = true
+}
+
+const onTagCreated = (tag: TagItem) => {
+  if (!allTags.value.some((t) => t.id === tag.id)) {
+    allTags.value = [...allTags.value, tag].sort((a, b) => a.name.localeCompare(b.name))
+  }
+}
+
+const onTagPickerConfirm = async (tagIds: number[]) => {
+  if (!tagPickerNodeIds.value.length || !tagIds.length) return
+  tagPickerSubmitting.value = true
+  try {
+    const { data } = await batchAddNodeTags(tagPickerNodeIds.value, tagIds)
+    const n = tagPickerNodeIds.value.length
+    ElMessage.success(n > 1 ? `已为 ${data.updated} 个相册添加标签` : '已添加标签')
+    tagPickerOpen.value = false
+    tagPickerNodeIds.value = []
+    await refreshTags()
+  } catch {
+    ElMessage.error('添加标签失败')
+  } finally {
+    tagPickerSubmitting.value = false
+  }
+}
+
+const onTagPickerRemove = async (tagId: number) => {
+  const nodeIds = tagPickerNodeIds.value.filter((id) =>
+    (nodeTagsMap.value[id] ?? []).some((t) => t.id === tagId),
+  )
+  if (!nodeIds.length) return
+  try {
+    await Promise.all(nodeIds.map((id) => removeNodeTag(id, tagId)))
+    await refreshTags()
+    ElMessage.success('已移除标签')
+  } catch {
+    ElMessage.error('移除标签失败')
+  }
+}
+
+const deleteHint = (node: NodeItem) =>
+  node.source_type === 'zip' ? '磁盘上的压缩包将被永久删除。' : '磁盘上的文件夹将被永久删除。'
+
+const onDeleteNode = async (node: NodeItem) => {
+  try {
+    await ElMessageBox.confirm(
+      `确定删除「${node.name}」？\n\n${deleteHint(node)}`,
+      '删除确认',
+      { type: 'warning', confirmButtonText: '删除', cancelButtonText: '取消' },
+    )
+  } catch {
+    return
+  }
+
+  deleting.value = true
+  try {
+    const { data } = await deleteNodes([node.id])
+    if (data.errors.length) {
+      ElMessage.error(data.errors.join('; '))
+    } else {
+      ElMessage.success('已删除')
+    }
+    await loadView(nodeId.value)
+  } catch {
+    ElMessage.error('删除失败')
+  } finally {
+    deleting.value = false
+  }
 }
 
 const onBatchDelete = async () => {
@@ -259,6 +447,7 @@ const loadView = async (id: number | null) => {
     nodes.value = (await fetchNodes(undefined, sort)).data
     images.value = []
     crumbs.value = [{ id: null, name: '画廊' }]
+    await Promise.all([refreshTags(), loadProgress()])
     return
   }
 
@@ -269,11 +458,13 @@ const loadView = async (id: number | null) => {
   if (node.node_type === 'container') {
     nodes.value = (await fetchNodes(id, sort)).data
     images.value = []
+    await Promise.all([refreshTags(), loadProgress()])
     return
   }
 
   images.value = (await fetchNodeImages(id)).data.items
   nodes.value = node.node_type === 'both' ? (await fetchNodes(id, sort)).data : []
+  await Promise.all([refreshTags(), loadProgress()])
 }
 
 const goTo = (id: number | null) => {
@@ -293,7 +484,7 @@ const openReader = (page = 0) => {
   if (!currentNode.value) return
   router.push({
     path: `/reader/${currentNode.value.id}`,
-    query: { page, mode: getStoredReaderMode() },
+    query: { page, mode: 'scroll' },
   })
 }
 
@@ -338,7 +529,15 @@ const onScan = async () => {
 
 watch(nodeId, (id) => loadView(id), { immediate: true })
 
-onMounted(() => loadView(nodeId.value))
+watch(
+  () => nodes.value.map((n) => n.id).join(','),
+  () => refreshTags(),
+)
+
+onMounted(async () => {
+  allTags.value = (await fetchTags()).data
+  await loadView(nodeId.value)
+})
 </script>
 
 <style scoped>
@@ -463,6 +662,23 @@ h1 {
 
 .page-head :deep(.crumb) {
   margin-bottom: 16px;
+}
+
+.search-row {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+
+.search-row :deep(.search-bar.full) {
+  flex: 1;
+  width: auto;
+  max-width: none;
+}
+
+.tag-filter {
+  width: 200px;
+  flex-shrink: 0;
 }
 
 .gallery {

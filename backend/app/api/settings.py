@@ -3,7 +3,8 @@
 from fastapi import APIRouter, Depends, HTTPException
 
 from app.config import Settings, get_settings, update_settings_json
-from app.schemas.settings import SettingsResponse, SettingsSaveResponse, SettingsUpdate
+from app.schemas.settings import SettingsResponse, SettingsSaveResponse, SettingsUpdate, ThumbRebuildResponse
+from app.services.thumbnail import clear_thumbnail_cache
 from app.services.watcher import start_gallery_watcher, stop_gallery_watcher
 
 router = APIRouter(prefix="/settings", tags=["settings"])
@@ -35,3 +36,10 @@ def save_settings(body: SettingsUpdate) -> SettingsSaveResponse:
     if needs_rescan:
         message = "配置已保存，画廊根目录已变更，请重新扫描"
     return SettingsSaveResponse(**settings.as_public_dict(), message=message, needs_rescan=needs_rescan)
+
+
+@router.post("/rebuild-thumbs", response_model=ThumbRebuildResponse)
+def rebuild_thumbs(settings: Settings = Depends(get_settings)) -> ThumbRebuildResponse:
+    deleted = clear_thumbnail_cache(settings)
+    message = f"已清除 {deleted} 个缩略图，访问时将按当前配置重新生成"
+    return ThumbRebuildResponse(deleted=deleted, message=message)

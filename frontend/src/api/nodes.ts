@@ -19,6 +19,9 @@ export const fetchNodeImages = (id: number) => http.get<ImageList>(`/nodes/${id}
 
 export const fetchProgress = (nodeId: number) => http.get<ReadProgress>(`/nodes/${nodeId}/progress`)
 
+export const fetchNodesProgress = (nodeIds: number[]) =>
+  http.get<ReadProgress[]>('/nodes/progress', { params: { ids: nodeIds.join(',') } })
+
 export const saveProgress = (nodeId: number, pageIndex: number) =>
   http.put<ReadProgress>(`/nodes/${nodeId}/progress`, { page_index: pageIndex })
 

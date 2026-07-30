@@ -18,3 +18,8 @@ export type SettingsSaveResult = Settings & {
   message?: string
   needs_rescan?: boolean
 }
+
+export type ThumbRebuildResult = {
+  deleted: number
+  message: string
+}

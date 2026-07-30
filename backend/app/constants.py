@@ -5,6 +5,7 @@ ALBUM = "album"
 BOTH = "both"
 
 SOURCE_FOLDER = "folder"
+SOURCE_ZIP = "zip"
 
 SCAN_PENDING = "pending"
 SCAN_RUNNING = "running"

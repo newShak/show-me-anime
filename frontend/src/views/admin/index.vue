@@ -17,6 +17,9 @@
             <el-form-item label="缩略图尺寸">
               <el-input-number v-model="form.thumb_max_size" :min="64" :max="2000" />
             </el-form-item>
+            <el-form-item label="缩略图缓存">
+              <el-button :loading="rebuildingThumbs" @click="onRebuildThumbs">重建缩略图</el-button>
+            </el-form-item>
             <el-form-item label="目录监听">
               <el-switch v-model="form.watch_enabled" />
             </el-form-item>
@@ -68,7 +71,7 @@
 import { onMounted, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { fetchScanStatus, triggerScan } from '@/api/scan'
-import { fetchSettings, saveSettings } from '@/api/settings'
+import { fetchSettings, rebuildThumbs, saveSettings } from '@/api/settings'
 import { createTag, deleteTag, fetchTags } from '@/api/tags'
 import type { ScanJob } from '@/types/node'
 import type { Settings } from '@/types/settings'
@@ -76,6 +79,7 @@ import type { TagItem } from '@/types/tag'
 
 const form = ref<Settings | null>(null)
 const savingSettings = ref(false)
+const rebuildingThumbs = ref(false)
 const scanning = ref(false)
 const scanJob = ref<ScanJob | null>(null)
 const tags = ref<TagItem[]>([])
@@ -113,6 +117,28 @@ const onSaveSettings = async () => {
     ElMessage.error('保存失败')
   } finally {
     savingSettings.value = false
+  }
+}
+
+const onRebuildThumbs = async () => {
+  try {
+    await ElMessageBox.confirm(
+      '将清空缩略图缓存目录，下次浏览相册时会按当前尺寸重新生成。原图不受影响。',
+      '重建缩略图',
+      { type: 'warning', confirmButtonText: '重建', cancelButtonText: '取消' },
+    )
+  } catch {
+    return
+  }
+
+  rebuildingThumbs.value = true
+  try {
+    const { data } = await rebuildThumbs()
+    ElMessage.success(data.message)
+  } catch {
+    ElMessage.error('重建失败')
+  } finally {
+    rebuildingThumbs.value = false
   }
 }
 
