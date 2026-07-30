@@ -34,9 +34,18 @@ router = APIRouter(tags=["nodes"])
 
 def _image_response(source: ImageSource) -> FileResponse | Response:
     media_type = mimetypes.guess_type(source.filename)[0] or "application/octet-stream"
+    cache = {"Cache-Control": "private, max-age=3600, must-revalidate"}
     if source.data is not None:
-        return Response(content=source.data, media_type=media_type)
-    return FileResponse(source.path, media_type=media_type, filename=source.filename)
+        headers = {**cache, "ETag": f'W/"{source.mtime}-{len(source.data)}"'}
+        return Response(content=source.data, media_type=media_type, headers=headers)
+    stat = source.path.stat()
+    return FileResponse(
+        source.path,
+        media_type=media_type,
+        filename=source.filename,
+        stat_result=stat,
+        headers=cache,
+    )
 
 
 def _thumb_path(node: Node, source: ImageSource, settings) -> Path:

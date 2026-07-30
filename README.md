@@ -12,6 +12,16 @@
 
 详细设计、数据模型与 API 说明见 **[docs/project-overview.md](docs/project-overview.md)**。
 
+## 截图
+
+**画廊浏览** — 相册网格、搜索与标签筛选
+
+![画廊浏览](docs/images/browse.png)
+
+**阅读器** — 翻页 / 滚动模式，左侧缩略图可隐藏
+
+![阅读器](docs/images/reader.png)
+
 ## 技术栈
 
 | 层级 | 选型 |

@@ -27,11 +27,11 @@ export const saveProgress = (nodeId: number, pageIndex: number) =>
 
 export const coverThumbUrl = (id: number) => `/api/nodes/${id}/cover/thumb`
 
-export const imageThumbUrl = (nodeId: number, index: number) =>
-  `/api/nodes/${nodeId}/images/${index}/thumb`
+export const imageThumbUrl = (nodeId: number, index: number, v?: number) =>
+  `/api/nodes/${nodeId}/images/${index}/thumb${v != null ? `?v=${v}` : ''}`
 
-export const imageFileUrl = (nodeId: number, index: number) =>
-  `/api/nodes/${nodeId}/images/${index}/file`
+export const imageFileUrl = (nodeId: number, index: number, v?: number) =>
+  `/api/nodes/${nodeId}/images/${index}/file${v != null ? `?v=${v}` : ''}`
 
 export const deleteNodes = (ids: number[]) =>
   http.post<NodeBatchDeleteResult>('/nodes/batch-delete', { ids })

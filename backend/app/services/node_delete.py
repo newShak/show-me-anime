@@ -41,6 +41,20 @@ def collect_subtree_nodes(db: Session, path: str) -> list[Node]:
     return [n for n in all_nodes if n.path == path or n.path.startswith(f"{path}/")]
 
 
+def purge_nodes_index(db: Session, nodes: list[Node]) -> int:
+    """仅从数据库移除节点索引（不删磁盘），子节点先于父节点，并清理关联表。"""
+    if not nodes:
+        return 0
+    ordered = sorted(nodes, key=lambda n: n.path.count("/"), reverse=True)
+    ids = [n.id for n in ordered]
+    db.query(NodeTag).filter(NodeTag.node_id.in_(ids)).delete(synchronize_session=False)
+    db.query(ReadProgress).filter(ReadProgress.node_id.in_(ids)).delete(synchronize_session=False)
+    for node in ordered:
+        remove_node_search(db, node.id)
+        db.delete(node)
+    return len(ordered)
+
+
 def delete_node_subtree(db: Session, node: Node, settings: Settings | None = None) -> int:
     settings = settings or get_settings()
     target = resolve_node_dir(settings.gallery_root, node)
@@ -58,14 +72,8 @@ def delete_node_subtree(db: Session, node: Node, settings: Settings | None = Non
     else:
         shutil.rmtree(target)
 
-    ids = [n.id for n in targets]
-    if ids:
-        db.query(NodeTag).filter(NodeTag.node_id.in_(ids)).delete(synchronize_session=False)
-        db.query(ReadProgress).filter(ReadProgress.node_id.in_(ids)).delete(synchronize_session=False)
-        for nid in ids:
-            remove_node_search(db, nid)
-        for n in targets:
-            db.delete(n)
+    if targets:
+        purge_nodes_index(db, targets)
 
     parent_id = node.parent_id
     db.flush()

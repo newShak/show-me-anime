@@ -15,7 +15,12 @@
     </header>
 
     <div class="stage" @click="onStageClick">
-      <img v-if="currentUrl" :src="currentUrl" :alt="`${page + 1}`" />
+      <img
+        v-if="currentUrl"
+        :key="`${nodeId}-${page}-${cacheVersion}`"
+        :src="currentUrl"
+        :alt="`${page + 1}`"
+      />
       <el-empty v-else description="加载中..." />
     </div>
 
@@ -34,6 +39,7 @@ const props = defineProps<{
   page: number
   title: string
   mode: ReaderMode
+  cacheVersion?: number
 }>()
 
 const emit = defineEmits<{
@@ -46,14 +52,14 @@ const rootRef = ref<HTMLElement | null>(null)
 
 const currentUrl = computed(() =>
   props.total > 0 && props.page >= 0 && props.page < props.total
-    ? imageFileUrl(props.nodeId, props.page)
+    ? imageFileUrl(props.nodeId, props.page, props.cacheVersion)
     : '',
 )
 
 const preload = (index: number) => {
   if (index < 0 || index >= props.total) return
   const img = new Image()
-  img.src = imageFileUrl(props.nodeId, index)
+  img.src = imageFileUrl(props.nodeId, index, props.cacheVersion)
 }
 
 const go = (index: number) => {

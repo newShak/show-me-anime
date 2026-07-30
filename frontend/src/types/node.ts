@@ -8,6 +8,7 @@ export type NodeItem = {
   image_count: number
   subdir_count: number
   cover_rel_path: string | null
+  dir_mtime?: number | null
 }
 
 export type ImageItem = {

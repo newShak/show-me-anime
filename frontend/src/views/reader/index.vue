@@ -6,6 +6,7 @@
     :page="page"
     :title="title"
     :mode="mode"
+    :cache-version="cacheVersion"
     @close="onClose"
     @change="onPageChange"
     @mode-change="onModeChange"
@@ -17,6 +18,7 @@
     :page="page"
     :title="title"
     :mode="mode"
+    :cache-version="cacheVersion"
     @close="onClose"
     @change="onPageChange"
     @mode-change="onModeChange"
@@ -40,6 +42,7 @@ const total = ref(0)
 const page = ref(0)
 const title = ref('')
 const ready = ref(false)
+const cacheVersion = ref(0)
 const mode = ref<ReaderMode>(resolveReaderMode(route.query.mode as string | undefined))
 
 let saveTimer: ReturnType<typeof setTimeout> | null = null
@@ -54,6 +57,7 @@ const load = async () => {
   ])
   title.value = nodeRes.data.name
   total.value = imagesRes.data.total
+  cacheVersion.value = nodeRes.data.dir_mtime ?? Date.now()
 
   const queryPage = route.query.page != null ? Number(route.query.page) : null
   const savedPage = progressRes.data.page_index

@@ -12,7 +12,7 @@ from app.config import Settings, get_settings
 from app.db.models import Node, ScanJob
 from app.services.archive_reader import list_archive_images
 from app.services.node_admin import sync_node_search_index
-from app.services.search import remove_node_search
+from app.services.node_delete import purge_nodes_index
 from app.utils.natural_sort import natural_sort_key, sorted_image_names
 from app.utils.paths import archive_display_name, is_archive_file, is_image_file, rel_path
 
@@ -112,12 +112,11 @@ class Scanner:
                     job.updated += 1
                     sync_node_search_index(db, node)
 
-            for path_str, node in existing.items():
-                if path_str not in seen:
-                    logger.debug("scan job_id=%s removing node path=%s", job.id, path_str)
-                    remove_node_search(db, node.id)
-                    db.delete(node)
-                    job.removed += 1
+            stale = [node for path_str, node in existing.items() if path_str not in seen]
+            if stale:
+                removed = purge_nodes_index(db, stale)
+                job.removed += removed
+                logger.debug("scan job_id=%s purged stale nodes count=%s", job.id, removed)
 
             self._apply_container_covers(db, job)
 
@@ -137,12 +136,15 @@ class Scanner:
             )
             return job
         except Exception as exc:
-            logger.exception("scan job_id=%s failed: %s", job.id, exc)
-            job.status = constants.SCAN_FAILED
-            job.finished_at = time.time()
-            job.message = str(exc)
-            db.commit()
-            db.refresh(job)
+            job_id = job.id
+            db.rollback()
+            job = db.get(ScanJob, job_id)
+            if job is not None:
+                job.status = constants.SCAN_FAILED
+                job.finished_at = time.time()
+                job.message = str(exc)
+                db.commit()
+            logger.exception("scan job_id=%s failed: %s", job_id, exc)
             raise
 
     @staticmethod

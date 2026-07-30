@@ -12,7 +12,8 @@ class NodeResponse(BaseModel):
     source_type: str
     image_count: int
     subdir_count: int
-    cover_rel_path: str | None
+    cover_rel_path: str | None = None
+    dir_mtime: float | None = None
 
     model_config = {"from_attributes": True}
 

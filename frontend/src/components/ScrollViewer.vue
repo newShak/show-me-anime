@@ -28,7 +28,11 @@
               :style="{ height: `${THUMB_IMG_HEIGHT}px` }"
               @click="scrollTo(index)"
             >
-              <img :src="imageThumbUrl(nodeId, index)" :alt="`${index + 1}`" />
+              <img
+                :key="`${nodeId}-${index}-${cacheVersion}`"
+                :src="imageThumbUrl(nodeId, index, cacheVersion)"
+                :alt="`${index + 1}`"
+              />
               <span>{{ index + 1 }}</span>
             </button>
           </div>
@@ -42,7 +46,12 @@
           :ref="(el) => setPageRef(i - 1, el as HTMLElement | null)"
           class="page-block"
         >
-          <img :src="imageFileUrl(nodeId, i - 1)" :alt="`${i}`" loading="lazy" />
+          <img
+            :key="`${nodeId}-${i - 1}-${cacheVersion}`"
+            :src="imageFileUrl(nodeId, i - 1, cacheVersion)"
+            :alt="`${i}`"
+            loading="lazy"
+          />
         </figure>
       </main>
     </div>
@@ -71,6 +80,7 @@ const props = defineProps<{
   page: number
   title: string
   mode: ReaderMode
+  cacheVersion?: number
 }>()
 
 const emit = defineEmits<{
