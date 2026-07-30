@@ -63,11 +63,30 @@ def resolve_cover_source(
     settings: Settings | None = None,
 ) -> ImageSource:
     settings = settings or get_settings()
+    cover = node.cover_rel_path
+    if not cover:
+        raise HTTPException(status_code=404, detail="no cover image")
+
+    if node.source_type == constants.SOURCE_FOLDER:
+        if "::" in cover:
+            archive_name, entry = cover.split("::", 1)
+            archive_path = f"{node.path}/{archive_name}".strip("/") if node.path else archive_name
+            return _resolve_archive_source(settings, archive_path, entry)
+
+        dir_path = (settings.gallery_root / node.path).resolve()
+        inherited = (dir_path / cover).resolve()
+        if str(inherited).startswith(str(dir_path)) and inherited.is_file():
+            return ImageSource(
+                filename=Path(cover).name,
+                path=inherited,
+                mtime=inherited.stat().st_mtime,
+            )
+
     names = reader.list_images(db, node)
     if not names:
         raise HTTPException(status_code=404, detail="no cover image")
 
-    filename = node.cover_rel_path if node.cover_rel_path in names else names[0]
+    filename = cover if cover in names else names[0]
     if node.source_type == constants.SOURCE_ZIP:
         return _resolve_archive_source(settings, node.path, filename)
 

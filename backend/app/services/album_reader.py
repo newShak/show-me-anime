@@ -1,5 +1,6 @@
 """相册图片列表：按需读盘/读压缩包 + 自然排序 + 内存缓存。"""
 
+import logging
 import time
 import zipfile
 from dataclasses import dataclass
@@ -13,6 +14,8 @@ from app.db.models import Node
 from app.services.archive_reader import list_archive_images
 from app.utils.natural_sort import sorted_image_names
 from app.utils.paths import is_image_file
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -29,9 +32,13 @@ class AlbumReader:
 
     def invalidate(self, node_id: int | None = None) -> None:
         if node_id is None:
+            count = len(self._cache)
             self._cache.clear()
+            logger.info("album cache cleared all count=%s", count)
             return
-        self._cache.pop(node_id, None)
+        if node_id in self._cache:
+            self._cache.pop(node_id, None)
+            logger.debug("album cache cleared node_id=%s", node_id)
 
     def list_images(self, db: Session, node: Node) -> list[str]:
         if node.source_type == constants.SOURCE_ZIP:
@@ -41,18 +48,23 @@ class AlbumReader:
     def _list_archive_images(self, db: Session, node: Node) -> list[str]:
         archive_path = self.settings.gallery_root / node.path
         if not archive_path.is_file():
+            logger.warning("album archive missing node_id=%s path=%s", node.id, node.path)
             return []
 
         archive_mtime = archive_path.stat().st_mtime
         cached = self._cache.get(node.id)
         ttl = self.settings.album_list_cache_ttl
         if cached and cached.dir_mtime == archive_mtime and time.time() - cached.cached_at < ttl:
+            logger.debug("album cache hit node_id=%s images=%s", node.id, len(cached.filenames))
             return cached.filenames
 
         try:
             filenames = list_archive_images(archive_path)
-        except (OSError, zipfile.BadZipFile):
+        except (OSError, zipfile.BadZipFile) as exc:
+            logger.warning("album archive read failed node_id=%s path=%s error=%s", node.id, node.path, exc)
             return []
+
+        logger.info("album listed node_id=%s source=archive images=%s", node.id, len(filenames))
 
         self._cache[node.id] = CacheEntry(
             dir_mtime=archive_mtime, filenames=filenames, cached_at=time.time()
@@ -63,17 +75,20 @@ class AlbumReader:
     def _list_folder_images(self, db: Session, node: Node) -> list[str]:
         dir_path = self.settings.gallery_root / node.path
         if not dir_path.is_dir():
+            logger.warning("album folder missing node_id=%s path=%s", node.id, node.path)
             return []
 
         dir_mtime = dir_path.stat().st_mtime
         cached = self._cache.get(node.id)
         ttl = self.settings.album_list_cache_ttl
         if cached and cached.dir_mtime == dir_mtime and time.time() - cached.cached_at < ttl:
+            logger.debug("album cache hit node_id=%s images=%s", node.id, len(cached.filenames))
             return cached.filenames
 
         filenames = sorted_image_names(
             [entry.name for entry in dir_path.iterdir() if entry.is_file() and is_image_file(entry.name)]
         )
+        logger.info("album listed node_id=%s source=folder images=%s", node.id, len(filenames))
         self._cache[node.id] = CacheEntry(dir_mtime=dir_mtime, filenames=filenames, cached_at=time.time())
         self._sync_node_meta(db, node, filenames, dir_mtime)
         return filenames

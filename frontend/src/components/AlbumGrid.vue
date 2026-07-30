@@ -17,7 +17,7 @@
       <div class="cover-wrap">
         <span v-if="progressText(node)" class="progress-badge">{{ progressText(node) }}</span>
         <img
-          v-if="node.node_type !== 'container'"
+          v-if="node.cover_rel_path"
           :src="coverThumbUrl(node.id)"
           class="cover"
           loading="lazy"

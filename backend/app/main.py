@@ -1,5 +1,6 @@
 """FastAPI 应用入口。"""
 
+import logging
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -9,10 +10,14 @@ from fastapi.staticfiles import StaticFiles
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.responses import FileResponse
 
-from app.api import health, nodes, scan, search, settings as settings_api, tags
+from app.api import health, nodes, scan, search, settings as settings_api, tags, tasks
 from app.config import get_settings
 from app.db.session import init_db
+from app.logging_config import setup_logging
 from app.services.watcher import start_gallery_watcher, stop_gallery_watcher
+
+setup_logging()
+logger = logging.getLogger(__name__)
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 STATIC_DIR = PROJECT_ROOT / "frontend" / "dist"
@@ -32,10 +37,18 @@ class SPAStaticFiles(StaticFiles):
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
-    get_settings()
+    settings = get_settings()
+    logger.info(
+        "starting gallery_root=%s thumb_dir=%s watch=%s db=%s",
+        settings.gallery_root,
+        settings.thumb_dir,
+        settings.watch_enabled,
+        settings.database_url,
+    )
     init_db()
     start_gallery_watcher()
     yield
+    logger.info("shutting down")
     stop_gallery_watcher()
 
 
@@ -55,6 +68,10 @@ app.include_router(nodes.router, prefix="/api")
 app.include_router(scan.router, prefix="/api")
 app.include_router(search.router, prefix="/api")
 app.include_router(tags.router, prefix="/api")
+app.include_router(tasks.router, prefix="/api")
 
 if STATIC_DIR.is_dir():
     app.mount("/", SPAStaticFiles(directory=STATIC_DIR, html=True), name="spa")
+    logger.info("spa static mounted from %s", STATIC_DIR)
+else:
+    logger.warning("spa static dir missing: %s", STATIC_DIR)

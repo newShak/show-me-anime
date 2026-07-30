@@ -1,7 +1,10 @@
 import { http } from './http'
-import type { NodeTagsGroup, TagItem } from '@/types/tag'
+import type { NodeTagsGroup, TagItem, TagPage } from '@/types/tag'
 
 export const fetchTags = () => http.get<TagItem[]>('/tags')
+
+export const fetchTagsPage = (page = 1, pageSize = 10) =>
+  http.get<TagPage>('/tags/paged', { params: { page, pageSize } })
 
 export const createTag = (name: string) => http.post<TagItem>('/tags', { name })
 

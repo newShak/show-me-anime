@@ -6,7 +6,7 @@
           <span>show-me-anime</span>
           <div class="actions">
             <el-button type="primary" link @click="$router.push('/browse')">进入画廊</el-button>
-            <el-button type="primary" link @click="$router.push('/admin')">管理</el-button>
+            <el-button type="primary" link @click="$router.push('/admin/settings')">管理</el-button>
             <el-tag :type="healthOk ? 'success' : 'danger'">
               {{ healthOk ? '后端已连接' : '后端未连接' }}
             </el-tag>

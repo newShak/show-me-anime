@@ -17,8 +17,15 @@ class _DebouncedHandler(FileSystemEventHandler):
         self.debounce_seconds = debounce_seconds
         self._timer: threading.Timer | None = None
         self._lock = threading.Lock()
+        self._pending_paths: list[str] = []
 
-    def on_any_event(self, _event) -> None:
+    def on_any_event(self, event) -> None:
+        src = getattr(event, "src_path", None)
+        if src:
+            self._pending_paths.append(src)
+        dest = getattr(event, "dest_path", None)
+        if dest:
+            self._pending_paths.append(dest)
         self._schedule()
 
     def _schedule(self) -> None:
@@ -28,11 +35,16 @@ class _DebouncedHandler(FileSystemEventHandler):
             self._timer = threading.Timer(self.debounce_seconds, self._trigger_scan)
             self._timer.daemon = True
             self._timer.start()
+        logger.debug("watchdog event debounced %.1fs", self.debounce_seconds)
 
     def _trigger_scan(self) -> None:
-        job = run_scan()
-        if job:
-            logger.info("watchdog scan done: added=%s updated=%s removed=%s", job.added, job.updated, job.removed)
+        with self._lock:
+            paths = self._pending_paths[:]
+            self._pending_paths.clear()
+        logger.info("watchdog debounced scan triggered hints=%s", len(paths))
+        job = run_scan(source="watchdog", changed_paths=paths or None)
+        if job is None:
+            logger.warning("watchdog scan skipped reason=concurrent_scan")
 
 
 class GalleryWatcher:
@@ -42,12 +54,13 @@ class GalleryWatcher:
 
     def start(self) -> None:
         if not self.settings.watch_enabled:
+            logger.info("watchdog disabled watch_enabled=false")
             return
         handler = _DebouncedHandler(self.settings.watch_debounce_seconds)
         self._observer = Observer()
         self._observer.schedule(handler, str(self.settings.gallery_root), recursive=True)
         self._observer.start()
-        logger.info("watchdog started: %s", self.settings.gallery_root)
+        logger.info("watchdog started root=%s debounce=%ss", self.settings.gallery_root, self.settings.watch_debounce_seconds)
 
     def stop(self) -> None:
         if self._observer is None:
@@ -64,6 +77,7 @@ _watcher: GalleryWatcher | None = None
 def start_gallery_watcher() -> None:
     global _watcher
     if _watcher is not None:
+        logger.debug("watchdog already running")
         return
     _watcher = GalleryWatcher()
     _watcher.start()

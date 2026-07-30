@@ -12,6 +12,9 @@ SCAN_RUNNING = "running"
 SCAN_DONE = "done"
 SCAN_FAILED = "failed"
 
+SCAN_MODE_INCREMENTAL = "incremental"
+SCAN_MODE_FULL = "full"
+
 SORT_NAME = "name"
 SORT_MTIME = "mtime"
 ORDER_ASC = "asc"

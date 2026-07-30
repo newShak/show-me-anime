@@ -8,7 +8,7 @@
       <div class="links">
         <router-link to="/" exact-active-class="active">首页</router-link>
         <a :class="{ active: isGallery }" href="#" @click.prevent="$router.push('/browse')">画廊</a>
-        <router-link to="/admin" active-class="active">管理</router-link>
+        <a :class="{ active: isAdmin }" href="#" @click.prevent="$router.push('/admin/settings')">管理</a>
       </div>
       <el-switch
         :model-value="theme === 'dark'"
@@ -28,6 +28,7 @@ import { applyTheme, getTheme, type ThemeMode } from '@/composables/useTheme'
 
 const route = useRoute()
 const isGallery = computed(() => route.path.startsWith('/browse') || route.path === '/search')
+const isAdmin = computed(() => route.path.startsWith('/admin'))
 
 const theme = ref<ThemeMode>(getTheme())
 

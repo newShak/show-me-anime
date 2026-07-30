@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 
 from app.db.models import Node, NodeTag, Tag
 from app.db.session import get_db
-from app.schemas.tag import NodeTagsBatchAdd, NodeTagsItem, NodeTagsUpdate, TagCreate, TagResponse
+from app.schemas.tag import NodeTagsBatchAdd, NodeTagsItem, NodeTagsUpdate, TagCreate, TagPageResponse, TagResponse
 from app.services.node_admin import sync_node_search_index
 
 router = APIRouter(prefix="/tags", tags=["tags"])
@@ -14,6 +14,18 @@ router = APIRouter(prefix="/tags", tags=["tags"])
 @router.get("", response_model=list[TagResponse])
 def list_tags(db: Session = Depends(get_db)) -> list[Tag]:
     return db.query(Tag).order_by(Tag.name).all()
+
+
+@router.get("/paged", response_model=TagPageResponse)
+def list_tags_paged(
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=10, ge=1, le=100, alias="pageSize"),
+    db: Session = Depends(get_db),
+) -> TagPageResponse:
+    query = db.query(Tag).order_by(Tag.name)
+    total = query.count()
+    items = query.offset((page - 1) * page_size).limit(page_size).all()
+    return TagPageResponse(items=items, total=total, page=page, page_size=page_size)
 
 
 @router.post("", response_model=TagResponse)

@@ -1,5 +1,6 @@
 """节点删除：磁盘目录 + 数据库子树。"""
 
+import logging
 import shutil
 from pathlib import Path
 
@@ -9,6 +10,8 @@ from app import constants
 from app.config import Settings, get_settings
 from app.db.models import Node, NodeTag, ReadProgress
 from app.services.search import remove_node_search
+
+logger = logging.getLogger(__name__)
 
 
 def filter_deletion_roots(nodes: list[Node]) -> list[Node]:
@@ -42,6 +45,13 @@ def delete_node_subtree(db: Session, node: Node, settings: Settings | None = Non
     settings = settings or get_settings()
     target = resolve_node_dir(settings.gallery_root, node)
     targets = collect_subtree_nodes(db, node.path)
+    logger.info(
+        "deleting node id=%s path=%s type=%s subtree=%s",
+        node.id,
+        node.path,
+        node.source_type,
+        len(targets),
+    )
 
     if node.source_type == constants.SOURCE_ZIP:
         target.unlink()
@@ -75,11 +85,14 @@ def delete_nodes(db: Session, node_ids: list[int], settings: Settings | None = N
 
     deleted = 0
     errors: list[str] = list(missing)
+    logger.info("delete nodes requested ids=%s roots=%s", node_ids, [n.path for n in roots])
     for node in roots:
         try:
             deleted += delete_node_subtree(db, node, settings)
         except (ValueError, OSError) as exc:
+            logger.warning("delete failed id=%s path=%s error=%s", node.id, node.path, exc)
             errors.append(f"{node.name}: {exc}")
 
     db.commit()
+    logger.info("delete finished deleted=%s errors=%s", deleted, len(errors))
     return deleted, errors

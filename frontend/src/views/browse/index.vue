@@ -17,8 +17,6 @@
             {{ sidebarCollapsed ? '目录' : '收起' }}
           </el-button>
           <span class="float-divider" />
-          <el-button text size="small" :loading="scanning" @click="onScan">扫描</el-button>
-          <span class="float-divider" />
           <el-select
             v-model="sortValue"
             class="sort-select"
@@ -159,7 +157,6 @@ import NodeTree from '@/components/NodeTree.vue'
 import NodeEditDialog from '@/components/NodeEditDialog.vue'
 import TagPickerDialog from '@/components/TagPickerDialog.vue'
 import { fetchNode, fetchNodeImages, fetchNodes, fetchNodesProgress, fetchProgress, deleteNodes } from '@/api/nodes'
-import { triggerScan } from '@/api/scan'
 import { batchAddNodeTags, fetchNodesTags, fetchTags, removeNodeTag } from '@/api/tags'
 import {
   getStoredSort,
@@ -179,7 +176,6 @@ const nodes = ref<NodeItem[]>([])
 const images = ref<ImageItem[]>([])
 const currentNode = ref<NodeItem | null>(null)
 const crumbs = ref<Crumb[]>([{ id: null, name: '画廊' }])
-const scanning = ref(false)
 const editOpen = ref(false)
 const selectMode = ref(false)
 const selectedIds = ref<number[]>([])
@@ -511,19 +507,6 @@ const startRead = async () => {
     openReader(progress)
   } catch (action) {
     if (action === 'cancel') openReader(0)
-  }
-}
-
-const onScan = async () => {
-  scanning.value = true
-  try {
-    const { data } = await triggerScan()
-    ElMessage.success(`扫描完成：新增 ${data.added}，更新 ${data.updated}`)
-    await loadView(nodeId.value)
-  } catch {
-    ElMessage.error('扫描失败')
-  } finally {
-    scanning.value = false
   }
 }
 

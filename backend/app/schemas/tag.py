@@ -1,6 +1,6 @@
 """标签 DTO。"""
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class TagResponse(BaseModel):
@@ -8,6 +8,17 @@ class TagResponse(BaseModel):
     name: str
 
     model_config = {"from_attributes": True}
+
+
+class TagPageResponse(BaseModel):
+    """标签分页结果。"""
+
+    model_config = ConfigDict(populate_by_name=True, serialize_by_alias=True)
+
+    items: list[TagResponse]
+    total: int
+    page: int
+    page_size: int = Field(alias="pageSize")
 
 
 class TagCreate(BaseModel):
