@@ -8,7 +8,8 @@ from sqlalchemy.orm import Session
 from app import constants
 from app.config import Settings, get_settings
 from app.db.models import Node, ScanJob
-from app.services.search import remove_node_search, sync_node_search
+from app.services.search import remove_node_search
+from app.services.node_admin import sync_node_search_index
 from app.utils.natural_sort import sorted_image_names
 from app.utils.paths import is_image_file, rel_path
 
@@ -68,7 +69,7 @@ class Scanner:
                         node.updated_at = time.time()
                         job.updated += 1
 
-                sync_node_search(db, node.id, node.name, node.path)
+                sync_node_search_index(db, node)
 
             for path_str, node in existing.items():
                 if path_str not in seen:

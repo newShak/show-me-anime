@@ -7,13 +7,15 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 
+from app import constants
 from app.config import get_settings
 from app.db.models import Node, ReadProgress
 from app.db.session import get_db
-from app.schemas.node import ImageItem, ImageListResponse, NodeResponse
+from app.schemas.node import ImageItem, ImageListResponse, NodeResponse, NodeUpdate
 from app.schemas.progress import ProgressResponse, ProgressUpdate
 from app.services.album_reader import AlbumReader, get_album_reader
 from app.services.media import resolve_cover_file, resolve_image_file
+from app.services.node_admin import sync_node_search_index
 from app.services.thumbnail import get_or_create_thumbnail
 
 router = APIRouter(tags=["nodes"])
@@ -37,6 +39,44 @@ def get_node(node_id: int, db: Session = Depends(get_db)) -> Node:
     node = db.get(Node, node_id)
     if node is None:
         raise HTTPException(status_code=404, detail="node not found")
+    return node
+
+
+@router.patch("/nodes/{node_id}", response_model=NodeResponse)
+def update_node(
+    node_id: int,
+    body: NodeUpdate,
+    db: Session = Depends(get_db),
+    reader: AlbumReader = Depends(get_album_reader),
+) -> Node:
+    node = db.get(Node, node_id)
+    if node is None:
+        raise HTTPException(status_code=404, detail="node not found")
+
+    data = body.model_dump(exclude_none=True)
+    if not data:
+        return node
+
+    if "node_type" in data:
+        allowed = {constants.CONTAINER, constants.ALBUM, constants.BOTH}
+        if data["node_type"] not in allowed:
+            raise HTTPException(status_code=400, detail="invalid node_type")
+        node.node_type = data["node_type"]
+
+    if "cover_index" in data:
+        names = reader.list_images(db, node)
+        idx = data["cover_index"]
+        if idx >= len(names):
+            raise HTTPException(status_code=400, detail="cover_index out of range")
+        node.cover_rel_path = names[idx]
+    elif "cover_rel_path" in data:
+        node.cover_rel_path = data["cover_rel_path"]
+
+    node.updated_at = time.time()
+    db.commit()
+    db.refresh(node)
+    sync_node_search_index(db, node)
+    db.commit()
     return node
 
 

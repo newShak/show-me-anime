@@ -14,6 +14,12 @@ export type ImageItem = {
   filename: string
 }
 
+export type NodeUpdate = {
+  node_type?: string
+  cover_rel_path?: string | null
+  cover_index?: number
+}
+
 export type ImageList = {
   node_id: number
   total: number

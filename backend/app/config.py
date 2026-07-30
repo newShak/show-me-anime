@@ -42,11 +42,15 @@ class Settings(BaseSettings):
         """相对路径转绝对路径，并确保必要目录存在。"""
         self.gallery_root = _to_abs(self.gallery_root)
         self.thumb_dir = _to_abs(self.thumb_dir)
+        if self.gallery_root.exists() and not self.gallery_root.is_dir():
+            raise ValueError(f"画廊根目录不可用: {self.gallery_root}")
+        if self.thumb_dir.exists() and not self.thumb_dir.is_dir():
+            raise ValueError(f"缩略图目录不可用: {self.thumb_dir}")
         self.gallery_root.mkdir(parents=True, exist_ok=True)
         self.thumb_dir.mkdir(parents=True, exist_ok=True)
         if not self.gallery_root.is_dir():
             raise ValueError(f"画廊根目录不可用: {self.gallery_root}")
-        if not self.thumb_dir.exists() or not Path(self.thumb_dir).is_dir():
+        if not self.thumb_dir.is_dir():
             raise ValueError(f"缩略图目录不可用: {self.thumb_dir}")
 
     def as_public_dict(self) -> dict[str, Any]:
@@ -64,8 +68,9 @@ class Settings(BaseSettings):
         }
 
 
-def _to_abs(path: Path) -> Path:
-    return path if path.is_absolute() else (PROJECT_ROOT / path).resolve()
+def _to_abs(path: Path | str) -> Path:
+    p = Path(path)
+    return p if p.is_absolute() else (PROJECT_ROOT / p).resolve()
 
 
 def _load_yaml_overrides() -> dict[str, Any]:
@@ -97,3 +102,20 @@ def reload_settings() -> Settings:
     """清除缓存并重新加载（测试或管理页改配置后使用）。"""
     get_settings.cache_clear()
     return get_settings()
+
+
+def update_settings_json(updates: dict[str, Any]) -> Settings:
+    """合并写入 data/settings.json 并重新加载。"""
+    current = _load_json_overrides()
+    merged = {**current, **{k: v for k, v in updates.items() if v is not None}}
+    get_settings.cache_clear()
+    try:
+        candidate = Settings(**{**_load_yaml_overrides(), **merged})
+        candidate.resolve_paths()
+    except ValueError:
+        get_settings.cache_clear()
+        get_settings()
+        raise
+    SETTINGS_JSON.parent.mkdir(parents=True, exist_ok=True)
+    SETTINGS_JSON.write_text(json.dumps(merged, indent=2, ensure_ascii=False), encoding="utf-8")
+    return reload_settings()

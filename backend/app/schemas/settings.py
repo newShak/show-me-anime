@@ -1,6 +1,6 @@
 """配置相关 DTO。"""
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class SettingsResponse(BaseModel):
@@ -13,3 +13,16 @@ class SettingsResponse(BaseModel):
     album_list_cache_ttl: int
     host: str
     port: int
+
+
+class SettingsUpdate(BaseModel):
+    gallery_root: str | None = None
+    thumb_dir: str | None = None
+    thumb_max_size: int | None = Field(default=None, ge=64, le=2000)
+    watch_enabled: bool | None = None
+    watch_debounce_seconds: int | None = Field(default=None, ge=1, le=60)
+
+
+class SettingsSaveResponse(SettingsResponse):
+    message: str | None = None
+    needs_rescan: bool = False

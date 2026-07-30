@@ -16,6 +16,7 @@ def _reset_app_state(tmp_path, monkeypatch):
     gallery.mkdir()
     thumbs.mkdir()
     db_path = tmp_path / "test.db"
+    monkeypatch.setenv("WATCH_ENABLED", "false")
     monkeypatch.setenv("GALLERY_ROOT", str(gallery))
     monkeypatch.setenv("THUMB_DIR", str(thumbs))
     monkeypatch.setenv("DATABASE_URL", f"sqlite:///{db_path.as_posix()}")

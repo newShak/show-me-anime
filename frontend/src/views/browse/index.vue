@@ -15,17 +15,25 @@
         <template v-if="currentNode && isAlbumView">
           <div class="album-head">
             <h2>{{ currentNode.name }}</h2>
-            <el-button v-if="images.length" type="primary" @click="startRead">开始阅读</el-button>
+            <div class="album-actions">
+              <el-button @click="editOpen = true">编辑</el-button>
+              <el-button v-if="images.length" type="primary" @click="startRead">开始阅读</el-button>
+            </div>
           </div>
           <ImageGrid :node-id="currentNode.id" :images="images" @open="openReader" />
           <AlbumGrid v-if="nodes.length" :nodes="nodes" class="subfolders" @open="onOpenNode" />
         </template>
         <template v-else>
-          <h2>{{ currentTitle }}</h2>
+          <div class="album-head">
+            <h2>{{ currentTitle }}</h2>
+            <el-button v-if="currentNode" @click="editOpen = true">编辑</el-button>
+          </div>
           <AlbumGrid :nodes="nodes" @open="onOpenNode" />
         </template>
       </main>
     </div>
+
+    <NodeEditDialog v-model="editOpen" :node="currentNode" @saved="loadView(nodeId)" />
   </div>
 </template>
 
@@ -38,7 +46,9 @@ import AlbumGrid from '@/components/AlbumGrid.vue'
 import BreadcrumbNav from '@/components/BreadcrumbNav.vue'
 import ImageGrid from '@/components/ImageGrid.vue'
 import NodeTree from '@/components/NodeTree.vue'
-import { fetchNode, fetchNodeImages, fetchNodes, fetchProgress, triggerScan } from '@/api/nodes'
+import NodeEditDialog from '@/components/NodeEditDialog.vue'
+import { fetchNode, fetchNodeImages, fetchNodes, fetchProgress } from '@/api/nodes'
+import { triggerScan } from '@/api/scan'
 import type { ImageItem, NodeItem } from '@/types/node'
 
 type Crumb = { id: number | null; name: string }
@@ -51,6 +61,7 @@ const images = ref<ImageItem[]>([])
 const currentNode = ref<NodeItem | null>(null)
 const crumbs = ref<Crumb[]>([{ id: null, name: '画廊' }])
 const scanning = ref(false)
+const editOpen = ref(false)
 
 const nodeId = computed(() => {
   const raw = route.params.nodeId
@@ -210,6 +221,11 @@ h2 {
   align-items: center;
   justify-content: space-between;
   margin-bottom: 16px;
+}
+
+.album-actions {
+  display: flex;
+  gap: 8px;
 }
 
 .subfolders {

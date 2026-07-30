@@ -3,24 +3,21 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
-from app import constants
 from app.db.models import ScanJob
 from app.db.session import get_db
 from app.schemas.scan import ScanJobResponse
-from app.services.album_reader import get_album_reader
-from app.services.scanner import Scanner
+from app.services.scan_runner import is_scan_running, run_scan
 
 router = APIRouter(prefix="/scan", tags=["scan"])
 
 
 @router.post("/trigger", response_model=ScanJobResponse)
-def trigger_scan(db: Session = Depends(get_db)) -> ScanJob:
-    running = db.query(ScanJob).filter(ScanJob.status == constants.SCAN_RUNNING).first()
-    if running:
+def trigger_scan() -> ScanJob:
+    if is_scan_running():
         raise HTTPException(status_code=409, detail="scan already running")
-
-    job = Scanner().scan_all(db)
-    get_album_reader().invalidate()
+    job = run_scan()
+    if job is None:
+        raise HTTPException(status_code=409, detail="scan already running")
     return job
 
 

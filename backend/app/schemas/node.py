@@ -1,6 +1,6 @@
 """节点与相册相关 DTO。"""
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class NodeResponse(BaseModel):
@@ -25,3 +25,9 @@ class ImageListResponse(BaseModel):
     node_id: int
     total: int
     items: list[ImageItem]
+
+
+class NodeUpdate(BaseModel):
+    node_type: str | None = None
+    cover_rel_path: str | None = None
+    cover_index: int | None = Field(default=None, ge=0)
