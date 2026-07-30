@@ -1,15 +1,17 @@
 """节点与相册 API。"""
 
 import mimetypes
+import time
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
-from app.db.models import Node
+from app.db.models import Node, ReadProgress
 from app.db.session import get_db
 from app.schemas.node import ImageItem, ImageListResponse, NodeResponse
+from app.schemas.progress import ProgressResponse, ProgressUpdate
 from app.services.album_reader import AlbumReader, get_album_reader
 from app.services.media import resolve_cover_file, resolve_image_file
 from app.services.thumbnail import get_or_create_thumbnail
@@ -102,3 +104,44 @@ def get_cover_thumb(
     file_path, filename = resolve_cover_file(node, db, reader, settings)
     thumb_path = get_or_create_thumbnail(file_path, node.path, filename, settings)
     return FileResponse(thumb_path, media_type="image/webp")
+
+
+@router.get("/nodes/{node_id}/progress", response_model=ProgressResponse)
+def get_progress(node_id: int, db: Session = Depends(get_db)) -> ProgressResponse:
+    node = db.get(Node, node_id)
+    if node is None:
+        raise HTTPException(status_code=404, detail="node not found")
+    row = db.get(ReadProgress, node_id)
+    if row is None:
+        return ProgressResponse(node_id=node_id, page_index=0, updated_at=None)
+    return ProgressResponse(node_id=node_id, page_index=row.page_index, updated_at=row.updated_at)
+
+
+@router.put("/nodes/{node_id}/progress", response_model=ProgressResponse)
+def save_progress(
+    node_id: int,
+    body: ProgressUpdate,
+    db: Session = Depends(get_db),
+    reader: AlbumReader = Depends(get_album_reader),
+) -> ProgressResponse:
+    node = db.get(Node, node_id)
+    if node is None:
+        raise HTTPException(status_code=404, detail="node not found")
+    if node.node_type == "container":
+        raise HTTPException(status_code=400, detail="container node has no images")
+
+    total = len(reader.list_images(db, node))
+    if body.page_index >= total:
+        raise HTTPException(status_code=400, detail="page_index out of range")
+
+    row = db.get(ReadProgress, node_id)
+    now = time.time()
+    if row is None:
+        row = ReadProgress(node_id=node_id, page_index=body.page_index, updated_at=now)
+        db.add(row)
+    else:
+        row.page_index = body.page_index
+        row.updated_at = now
+    db.commit()
+    db.refresh(row)
+    return ProgressResponse(node_id=node_id, page_index=row.page_index, updated_at=row.updated_at)

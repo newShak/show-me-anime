@@ -1,6 +1,6 @@
 <template>
   <div v-if="images.length" class="grid">
-    <div v-for="img in images" :key="img.index" class="item">
+    <div v-for="img in images" :key="img.index" class="item" @click="emit('open', img.index)">
       <img :src="imageThumbUrl(nodeId, img.index)" loading="lazy" :alt="img.filename" />
       <span>{{ img.filename }}</span>
     </div>
@@ -13,6 +13,7 @@ import type { ImageItem } from '@/types/node'
 import { imageThumbUrl } from '@/api/nodes'
 
 defineProps<{ nodeId: number; images: ImageItem[] }>()
+const emit = defineEmits<{ open: [index: number] }>()
 </script>
 
 <style scoped>
@@ -26,6 +27,7 @@ defineProps<{ nodeId: number; images: ImageItem[] }>()
   display: flex;
   flex-direction: column;
   gap: 6px;
+  cursor: pointer;
 }
 
 img {

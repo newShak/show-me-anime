@@ -25,6 +25,7 @@ declare module 'vue' {
     ElTag: typeof import('element-plus/es')['ElTag']
     ElTree: typeof import('element-plus/es')['ElTree']
     ImageGrid: typeof import('./src/components/ImageGrid.vue')['default']
+    ImageViewer: typeof import('./src/components/ImageViewer.vue')['default']
     NodeTree: typeof import('./src/components/NodeTree.vue')['default']
     RouterLink: typeof import('vue-router')['RouterLink']
     RouterView: typeof import('vue-router')['RouterView']

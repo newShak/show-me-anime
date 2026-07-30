@@ -12,8 +12,11 @@
 
       <main class="content">
         <template v-if="currentNode && isAlbumView">
-          <h2>{{ currentNode.name }}</h2>
-          <ImageGrid :node-id="currentNode.id" :images="images" />
+          <div class="album-head">
+            <h2>{{ currentNode.name }}</h2>
+            <el-button v-if="images.length" type="primary" @click="startRead">开始阅读</el-button>
+          </div>
+          <ImageGrid :node-id="currentNode.id" :images="images" @open="openReader" />
           <AlbumGrid v-if="nodes.length" :nodes="nodes" class="subfolders" @open="onOpenNode" />
         </template>
         <template v-else>
@@ -33,7 +36,7 @@ import AlbumGrid from '@/components/AlbumGrid.vue'
 import BreadcrumbNav from '@/components/BreadcrumbNav.vue'
 import ImageGrid from '@/components/ImageGrid.vue'
 import NodeTree from '@/components/NodeTree.vue'
-import { fetchNode, fetchNodeImages, fetchNodes, triggerScan } from '@/api/nodes'
+import { fetchNode, fetchNodeImages, fetchNodes, fetchProgress, triggerScan } from '@/api/nodes'
 import type { ImageItem, NodeItem } from '@/types/node'
 
 type Crumb = { id: number | null; name: string }
@@ -109,6 +112,17 @@ const goTo = (id: number | null) => {
 
 const onOpenNode = (node: NodeItem) => goTo(node.id)
 
+const openReader = (page = 0) => {
+  if (!currentNode.value) return
+  router.push({ path: `/reader/${currentNode.value.id}`, query: { page } })
+}
+
+const startRead = async () => {
+  if (!currentNode.value) return
+  const { data } = await fetchProgress(currentNode.value.id)
+  openReader(data.page_index)
+}
+
 const onScan = async () => {
   scanning.value = true
   try {
@@ -164,8 +178,15 @@ onMounted(() => loadView(nodeId.value))
 }
 
 h2 {
-  margin: 0 0 16px;
+  margin: 0;
   font-size: 18px;
+}
+
+.album-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 16px;
 }
 
 .subfolders {
