@@ -124,7 +124,7 @@ docker run -d \
 docker compose up -d --build
 ```
 
-**仅拉 Hub 镜像**（任意目录，只需本 compose 文件）：
+**仅拉 Hub 镜像**（任意目录，只需本 compose 文件；先 `mkdir -p gallery data/thumbs data`，再改 `docker-compose.hub.yml` 中 volumes 路径）：
 
 ```bash
 docker compose -f docker-compose.hub.yml pull
@@ -206,6 +206,22 @@ cd backend
 未配置时使用默认值。可将图片放入 `./gallery/` 目录进行试用。
 
 配置优先级：`data/settings.json` > `.env` > `config.yaml` > 默认值。
+
+## 安全说明
+
+本应用**未内置登录或权限控制**。管理页（扫描、配置、清理任务记录等）与浏览 API 默认可被同一网络内的任何人访问。
+
+### 部署建议
+
+- **不要**将 `:8000` 直接暴露到公网；仅在内网或本机使用。
+- 若需远程访问，请在前方加 **Nginx / Caddy 等反向代理**，并配置 **Basic Auth、OAuth 或 VPN**。
+- Docker 部署时，确保 `gallery/`、`data/` 卷权限合理，避免容器以过高权限读写宿主机目录。
+
+### 仓库与隐私
+
+- **不要提交**：`.env`、`data/`、`gallery/`、`*.db` 及任何图片/压缩包内容（已在 `.gitignore` 中）。
+- 复制 `.env.example` 为 `.env` 后仅在本地使用，勿将真实路径或密钥写入仓库。
+- 若仓库曾误提交敏感信息，改 public 前需清理 Git 历史并轮换相关密钥。
 
 ## 许可证
 
