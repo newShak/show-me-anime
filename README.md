@@ -4,11 +4,13 @@
 
 ## 功能概览
 
-- 以文件夹 / 压缩包为集合单位组织内容
-- Web 页面浏览、阅读、搜索与标签管理
-- 增量 / 全量扫描索引到 SQLite
-- 目录监听（watchdog）自动触发增量扫描
-- 集合级 FTS 搜索与自然排序阅读
+- 以文件夹 / 压缩包为集合单位组织内容，Web 浏览与阅读器（进度记忆）
+- 标签、FTS 搜索、最近添加 / 最近浏览 / 收藏
+- 画廊内批量打标、移动、删除、新建目录、封面编辑
+- 增量 / 全量扫描 + watchdog 自动索引
+- **WNA CG 外站下载**：搜索浏览、任务队列、断点续传、下载记录与文件大小统计
+- 管理后台：配置、标签、任务记录、应用日志
+- Docker 单容器部署，[Hub 预构建镜像](https://hub.docker.com/r/yaliyhub/show-me-anime)
 
 详细设计、数据模型与 API 说明见 **[docs/project-overview.md](docs/project-overview.md)**。
 
@@ -102,6 +104,7 @@ curl -X POST http://localhost:8000/api/scan/trigger
 |-----------|----------|------|
 | `./gallery` | `/data/gallery` | 图片/压缩包源目录 |
 | `./data` | `/app/data` | SQLite 数据库、缩略图缓存、`settings.json` |
+| `./logs`（可选） | `/data/logs` | 应用日志（可在 settings 中配置） |
 
 环境变量可在 `docker-compose.yml` 的 `environment` 中修改；也可在 `./data/settings.json` 写入配置（优先级更高）。
 
