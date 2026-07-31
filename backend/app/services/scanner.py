@@ -11,6 +11,7 @@ from app import constants
 from app.config import Settings, get_settings
 from app.db.models import Node, ScanJob
 from app.services.archive_reader import list_archive_images
+from app.services.cover_candidates import child_cover_path, inherit_container_cover
 from app.services.node_admin import sync_node_search_index
 from app.services.node_delete import purge_nodes_index
 from app.utils.natural_sort import natural_sort_key, sorted_image_names
@@ -80,6 +81,7 @@ class Scanner:
                         source_type=meta["source_type"],
                         image_count=meta["image_count"],
                         subdir_count=meta["subdir_count"],
+                        archive_count=meta["archive_count"],
                         cover_rel_path=meta["cover_rel_path"],
                         dir_mtime=meta["dir_mtime"],
                     )
@@ -89,6 +91,9 @@ class Scanner:
                     sync_node_search_index(db, node)
                     continue
 
+                cover_diff = (
+                    not node.cover_manual and node.cover_rel_path != meta["cover_rel_path"]
+                )
                 changed = (
                     node.name != meta["name"]
                     or node.node_type != meta["node_type"]
@@ -96,7 +101,8 @@ class Scanner:
                     or node.parent_id != parent_id
                     or node.image_count != meta["image_count"]
                     or node.subdir_count != meta["subdir_count"]
-                    or node.cover_rel_path != meta["cover_rel_path"]
+                    or node.archive_count != meta["archive_count"]
+                    or cover_diff
                     or node.dir_mtime != meta["dir_mtime"]
                 )
                 if changed:
@@ -106,7 +112,9 @@ class Scanner:
                     node.parent_id = parent_id
                     node.image_count = meta["image_count"]
                     node.subdir_count = meta["subdir_count"]
-                    node.cover_rel_path = meta["cover_rel_path"]
+                    node.archive_count = meta["archive_count"]
+                    if not node.cover_manual:
+                        node.cover_rel_path = meta["cover_rel_path"]
                     node.dir_mtime = meta["dir_mtime"]
                     node.updated_at = time.time()
                     job.updated += 1
@@ -156,6 +164,7 @@ class Scanner:
             "source_type": node.source_type,
             "image_count": node.image_count,
             "subdir_count": node.subdir_count,
+            "archive_count": node.archive_count,
             "cover_rel_path": node.cover_rel_path,
             "dir_mtime": node.dir_mtime,
         }
@@ -191,24 +200,17 @@ class Scanner:
 
     def _apply_container_covers(self, db: Session, job: ScanJob) -> None:
         """纯容器目录无本地图片时，继承第一个有封面的子节点。"""
-        nodes = db.query(Node).all()
-        children: dict[int | None, list[Node]] = {}
-        for node in nodes:
-            children.setdefault(node.parent_id, []).append(node)
-        for items in children.values():
-            items.sort(key=lambda n: natural_sort_key(n.name))
-
         containers = [
-            n for n in nodes if n.node_type == constants.CONTAINER and n.image_count == 0
+            n
+            for n in db.query(Node).all()
+            if n.node_type == constants.CONTAINER and n.image_count == 0
         ]
         containers.sort(key=lambda n: n.path.count("/"), reverse=True)
 
         for node in containers:
-            inherited = None
-            for child in children.get(node.id, []):
-                inherited = self._pick_child_cover(child)
-                if inherited:
-                    break
+            if node.cover_manual:
+                continue
+            inherited = inherit_container_cover(db, node)
             if node.cover_rel_path == inherited:
                 continue
             node.cover_rel_path = inherited
@@ -217,13 +219,7 @@ class Scanner:
 
     @staticmethod
     def _pick_child_cover(child: Node) -> str | None:
-        if child.source_type == constants.SOURCE_ZIP:
-            if not child.cover_rel_path:
-                return None
-            return f"{Path(child.path).name}::{child.cover_rel_path}"
-        if not child.cover_rel_path:
-            return None
-        return f"{child.name}/{child.cover_rel_path}"
+        return child_cover_path(child)
 
     def _collect_disk_nodes(
         self,
@@ -295,6 +291,10 @@ class Scanner:
 
         if not images:
             return None
+        prev = existing.get(rel)
+        cover = images[0]
+        if prev and prev.cover_manual and prev.cover_rel_path in images:
+            cover = prev.cover_rel_path
         return {
             "path": rel,
             "name": archive_display_name(archive_path.name),
@@ -302,7 +302,8 @@ class Scanner:
             "source_type": constants.SOURCE_ZIP,
             "image_count": len(images),
             "subdir_count": 0,
-            "cover_rel_path": images[0],
+            "archive_count": 0,
+            "cover_rel_path": cover,
             "dir_mtime": mtime,
         }
 
@@ -343,8 +344,13 @@ class Scanner:
             node_type = constants.CONTAINER
 
         cover = images[0] if images else None
-        if node_type == constants.CONTAINER and not cover:
-            prev = existing.get(rel)
+        prev = existing.get(rel)
+        if prev and prev.cover_manual and prev.cover_rel_path:
+            if images and prev.cover_rel_path in images:
+                cover = prev.cover_rel_path
+            elif node_type == constants.CONTAINER and not cover:
+                cover = prev.cover_rel_path
+        elif node_type == constants.CONTAINER and not cover:
             if prev and prev.cover_rel_path:
                 cover = prev.cover_rel_path
 
@@ -355,6 +361,7 @@ class Scanner:
             "source_type": constants.SOURCE_FOLDER,
             "image_count": len(images),
             "subdir_count": len(subdirs),
+            "archive_count": len(archives),
             "cover_rel_path": cover,
             "dir_mtime": current.stat().st_mtime,
         }

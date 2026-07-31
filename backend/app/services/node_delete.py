@@ -79,10 +79,13 @@ def delete_node_subtree(db: Session, node: Node, settings: Settings | None = Non
 
     parent_id = node.parent_id
     db.flush()
-    if parent_id is not None and node.source_type != constants.SOURCE_ZIP:
+    if parent_id is not None:
         parent = db.get(Node, parent_id)
         if parent is not None:
-            parent.subdir_count = max(0, parent.subdir_count - 1)
+            if node.source_type == constants.SOURCE_ZIP:
+                parent.archive_count = max(0, parent.archive_count - 1)
+            else:
+                parent.subdir_count = max(0, parent.subdir_count - 1)
     return len(targets)
 
 

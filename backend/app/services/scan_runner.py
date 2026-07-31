@@ -24,6 +24,34 @@ def _scan_hint_paths(changed_paths: list[str] | None, limit: int = 10) -> str:
     return f"[{head}, ... +{len(unique) - limit} more]"
 
 
+def reconcile_stale_scan_jobs(db) -> int:
+    """将无运行锁的进行中扫描标记为已中断（进程终止等异常退出）。"""
+    from app.constants import SCAN_INTERRUPTED, SCAN_RUNNING
+
+    running_jobs = (
+        db.query(ScanJob)
+        .filter(ScanJob.status == SCAN_RUNNING)
+        .order_by(ScanJob.id.desc())
+        .all()
+    )
+    if not running_jobs:
+        return 0
+
+    stale = running_jobs[1:] if is_scan_running() else running_jobs
+    if not stale:
+        return 0
+
+    now = time.time()
+    for job in stale:
+        job.status = SCAN_INTERRUPTED
+        job.finished_at = now
+        if not job.message:
+            job.message = "进程中断，任务未正常结束"
+    db.commit()
+    logger.info("reconciled stale scan jobs count=%s ids=%s", len(stale), [j.id for j in stale])
+    return len(stale)
+
+
 def run_scan(
     source: str = "manual",
     changed_paths: list[str] | None = None,
@@ -39,6 +67,7 @@ def run_scan(
     try:
         db = SessionLocal(bind=get_engine())
         try:
+            reconcile_stale_scan_jobs(db)
             job = Scanner().scan_all(db, source=source, changed_paths=changed_paths, mode=mode)
         finally:
             db.close()

@@ -12,10 +12,18 @@ class NodeResponse(BaseModel):
     source_type: str
     image_count: int
     subdir_count: int
+    archive_count: int = 0
     cover_rel_path: str | None = None
+    cover_manual: bool = False
     dir_mtime: float | None = None
+    created_at: float | None = None
 
     model_config = {"from_attributes": True}
+
+
+class RecentNodesResponse(BaseModel):
+    total: int
+    items: list[NodeResponse]
 
 
 class ImageItem(BaseModel):
@@ -29,10 +37,22 @@ class ImageListResponse(BaseModel):
     items: list[ImageItem]
 
 
+class CoverCandidate(BaseModel):
+    value: str
+    label: str
+    source_node_id: int
+
+
+class CoverCandidateListResponse(BaseModel):
+    node_id: int
+    items: list[CoverCandidate]
+
+
 class NodeUpdate(BaseModel):
     node_type: str | None = None
     cover_rel_path: str | None = None
     cover_index: int | None = Field(default=None, ge=0)
+    cover_manual: bool | None = None
 
 
 class NodeBatchDelete(BaseModel):

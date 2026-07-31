@@ -37,27 +37,24 @@
 import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import AlbumGrid from '@/components/AlbumGrid.vue'
-import { fetchRecentNodes } from '@/api/nodes'
 import { fetchFavorites, touchRecentView, toggleFavorite as apiToggleFavorite } from '@/api/library'
 import { fetchRecentViewed } from '@/composables/useRecentView'
 import { useNodeGridMeta } from '@/composables/useNodeGridMeta'
 import { FAVORITES_PAGE_SIZE } from '@/constants/home'
 import type { NodeItem } from '@/types/node'
 
-type SectionKind = 'added' | 'viewed' | 'favorites'
+type SectionKind = 'viewed' | 'favorites'
 
 const route = useRoute()
 const router = useRouter()
 const kind = computed(() => route.meta.section as SectionKind)
 
 const title = computed(() => {
-  if (kind.value === 'added') return '最近添加'
   if (kind.value === 'viewed') return '最近浏览'
   return '我的最爱'
 })
 
 const emptyText = computed(() => {
-  if (kind.value === 'added') return '暂无新相册'
   if (kind.value === 'viewed') return '还没有浏览记录'
   return '点击卡片上的星标收藏相册'
 })
@@ -75,11 +72,7 @@ const { nodeTagsMap, progressPercentMap, favoriteIds, loadFavoriteIds, loadMeta 
 const load = async () => {
   loading.value = true
   try {
-    if (kind.value === 'added') {
-      const { data } = await fetchRecentNodes()
-      nodes.value = data
-      total.value = data.length
-    } else if (kind.value === 'viewed') {
+    if (kind.value === 'viewed') {
       const { data } = await fetchRecentViewed()
       nodes.value = data
       total.value = data.length

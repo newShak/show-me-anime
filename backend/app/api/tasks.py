@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 
 from app.db.session import get_db
 from app.schemas.task import TaskPurgeRequest, TaskPurgeResponse, TaskRecordPageResponse
+from app.services.scan_runner import reconcile_stale_scan_jobs
 from app.services.task_log import list_task_records, purge_task_records
 
 router = APIRouter(prefix="/tasks", tags=["tasks"])
@@ -17,6 +18,7 @@ def get_task_records(
     db: Session = Depends(get_db),
 ) -> TaskRecordPageResponse:
     """最近任务执行记录（扫描 + 管理操作），分页返回。"""
+    reconcile_stale_scan_jobs(db)
     return list_task_records(db, page, page_size)
 
 

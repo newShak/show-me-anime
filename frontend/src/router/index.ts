@@ -20,8 +20,7 @@ const router = createRouter({
     { path: '/', component: () => import('@/views/home/index.vue') },
     {
       path: '/recent-added',
-      component: () => import('@/views/home/section.vue'),
-      meta: { section: 'added' },
+      component: () => import('@/views/home/recent-added.vue'),
     },
     {
       path: '/recent-viewed',

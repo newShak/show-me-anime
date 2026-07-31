@@ -18,7 +18,7 @@
         <span v-if="progressText(node)" class="progress-badge">{{ progressText(node) }}</span>
         <img
           v-if="node.cover_rel_path"
-          :src="coverThumbUrl(node.id)"
+          :src="coverThumbUrl(node.id, node.cover_rel_path)"
           class="cover"
           loading="lazy"
           alt=""
@@ -139,8 +139,10 @@ const subText = (node: NodeItem) => {
   const parts: string[] = []
   if (node.node_type !== 'container' && node.image_count > 0) parts.push(`${node.image_count} 张`)
   if (node.subdir_count > 0) parts.push(`${node.subdir_count} 个文件夹`)
+  if (node.archive_count > 0) parts.push(`${node.archive_count} 个压缩包`)
   if (parts.length) return parts.join(' · ')
   if (node.node_type === 'container') return '空文件夹'
+  if (node.source_type === 'zip') return `${node.image_count} 张`
   return '空相册'
 }
 </script>

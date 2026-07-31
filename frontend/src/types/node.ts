@@ -7,8 +7,22 @@ export type NodeItem = {
   source_type: string
   image_count: number
   subdir_count: number
+  archive_count: number
   cover_rel_path: string | null
+  cover_manual: boolean
   dir_mtime?: number | null
+  created_at?: number | null
+}
+
+export type CoverCandidate = {
+  value: string
+  label: string
+  source_node_id: number
+}
+
+export type CoverCandidateList = {
+  node_id: number
+  items: CoverCandidate[]
 }
 
 export type ImageItem = {
@@ -20,6 +34,7 @@ export type NodeUpdate = {
   node_type?: string
   cover_rel_path?: string | null
   cover_index?: number
+  cover_manual?: boolean
 }
 
 export type ImageList = {
@@ -52,4 +67,9 @@ export type ScanJob = {
   updated: number
   removed: number
   message: string | null
+}
+
+export type RecentNodesResult = {
+  total: number
+  items: NodeItem[]
 }

@@ -1,6 +1,6 @@
 import { http } from './http'
 import type { NodeSort } from '@/composables/useNodeSort'
-import type { ImageList, NodeBatchDeleteResult, NodeItem, NodeMovePayload, NodeMoveResult, NodeUpdate } from '@/types/node'
+import type { CoverCandidateList, ImageList, NodeBatchDeleteResult, NodeItem, NodeMovePayload, NodeMoveResult, NodeUpdate, RecentNodesResult } from '@/types/node'
 import type { ReadProgress } from '@/types/progress'
 
 export const fetchNodes = (parentId?: number, sort?: NodeSort) =>
@@ -11,8 +11,18 @@ export const fetchNodes = (parentId?: number, sort?: NodeSort) =>
     },
   })
 
-export const fetchRecentNodes = (limit = 20) =>
-  http.get<NodeItem[]>('/nodes/recent', { params: { limit } })
+export type RecentNodesParams = {
+  since?: number
+  until?: number
+  offset?: number
+  limit?: number
+}
+
+export const fetchRecentNodes = (params?: RecentNodesParams | number) => {
+  const p: RecentNodesParams =
+    typeof params === 'number' ? { limit: params } : (params ?? {})
+  return http.get<RecentNodesResult>('/nodes/recent', { params: p })
+}
 
 export const fetchNodesBatch = (ids: number[]) =>
   ids.length
@@ -25,6 +35,9 @@ export const patchNode = (id: number, body: NodeUpdate) => http.patch<NodeItem>(
 
 export const fetchNodeImages = (id: number) => http.get<ImageList>(`/nodes/${id}/images`)
 
+export const fetchCoverCandidates = (id: number) =>
+  http.get<CoverCandidateList>(`/nodes/${id}/cover/candidates`)
+
 export const fetchProgress = (nodeId: number) => http.get<ReadProgress>(`/nodes/${nodeId}/progress`)
 
 export const fetchNodesProgress = (nodeIds: number[]) =>
@@ -33,7 +46,10 @@ export const fetchNodesProgress = (nodeIds: number[]) =>
 export const saveProgress = (nodeId: number, pageIndex: number) =>
   http.put<ReadProgress>(`/nodes/${nodeId}/progress`, { page_index: pageIndex })
 
-export const coverThumbUrl = (id: number) => `/api/nodes/${id}/cover/thumb`
+export const coverThumbUrl = (id: number, cover?: string | null) => {
+  const base = `/api/nodes/${id}/cover/thumb`
+  return cover ? `${base}?v=${encodeURIComponent(cover)}` : base
+}
 
 export const imageThumbUrl = (nodeId: number, index: number, v?: number) =>
   `/api/nodes/${nodeId}/images/${index}/thumb${v != null ? `?v=${v}` : ''}`

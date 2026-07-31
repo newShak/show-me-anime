@@ -11,6 +11,7 @@ SCAN_PENDING = "pending"
 SCAN_RUNNING = "running"
 SCAN_DONE = "done"
 SCAN_FAILED = "failed"
+SCAN_INTERRUPTED = "interrupted"
 
 SCAN_MODE_INCREMENTAL = "incremental"
 SCAN_MODE_FULL = "full"

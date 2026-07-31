@@ -14,6 +14,8 @@ from app.config import Settings, get_settings
 from app.db.models import Node, ReadProgress
 from app.db.session import get_db
 from app.schemas.node import (
+    CoverCandidate,
+    CoverCandidateListResponse,
     ImageItem,
     ImageListResponse,
     NodeBatchDelete,
@@ -22,9 +24,15 @@ from app.schemas.node import (
     NodeMoveResponse,
     NodeResponse,
     NodeUpdate,
+    RecentNodesResponse,
 )
 from app.schemas.progress import ProgressResponse, ProgressUpdate
 from app.services.album_reader import AlbumReader, get_album_reader
+from app.services.cover_candidates import (
+    candidate_values,
+    inherit_container_cover,
+    list_cover_candidates,
+)
 from app.services.media import ImageSource, resolve_cover_source, resolve_image_source
 from app.services.node_admin import sync_node_search_index
 from app.services.node_delete import delete_nodes
@@ -109,21 +117,30 @@ def _parse_node_ids(raw: str) -> list[int]:
     return [int(part) for part in raw.split(",") if part.strip().isdigit()]
 
 
-@router.get("/nodes/recent", response_model=list[NodeResponse])
+@router.get("/nodes/recent", response_model=RecentNodesResponse)
 def recent_nodes(
-    limit: int | None = Query(default=None, ge=1, le=100),
+    since: float | None = Query(default=None, description="入库时间下限（unix 秒）"),
+    until: float | None = Query(default=None, description="入库时间上限（unix 秒）"),
+    offset: int = Query(default=0, ge=0),
+    limit: int | None = Query(default=None, ge=1, le=500),
     db: Session = Depends(get_db),
     settings: Settings = Depends(get_settings),
-) -> list[Node]:
+) -> RecentNodesResponse:
     """按入库时间返回最近添加的相册（不含纯文件夹）。"""
-    cap = limit if limit is not None else settings.recent_added_limit
-    return (
-        db.query(Node)
-        .filter(Node.node_type != constants.CONTAINER)
-        .order_by(Node.created_at.desc())
-        .limit(cap)
-        .all()
-    )
+    if since is not None or until is not None:
+        cap = limit if limit is not None else 500
+    else:
+        cap = limit if limit is not None else settings.recent_added_limit
+
+    query = db.query(Node).filter(Node.node_type != constants.CONTAINER)
+    if since is not None:
+        query = query.filter(Node.created_at >= since)
+    if until is not None:
+        query = query.filter(Node.created_at <= until)
+
+    total = query.count()
+    items = query.order_by(Node.created_at.desc()).offset(offset).limit(cap).all()
+    return RecentNodesResponse(total=total, items=items)
 
 
 @router.get("/nodes/batch", response_model=list[NodeResponse])
@@ -159,7 +176,7 @@ def update_node(
     if node is None:
         raise HTTPException(status_code=404, detail="node not found")
 
-    data = body.model_dump(exclude_none=True)
+    data = body.model_dump(exclude_unset=True)
     if not data:
         return node
 
@@ -169,14 +186,44 @@ def update_node(
             raise HTTPException(status_code=400, detail="invalid node_type")
         node.node_type = data["node_type"]
 
+    settings = get_settings()
+
+    if data.get("cover_manual") is False and "cover_index" not in data and "cover_rel_path" not in data:
+        node.cover_manual = False
+        node.cover_rel_path = None
+        if node.node_type == constants.CONTAINER and node.image_count == 0:
+            node.cover_rel_path = inherit_container_cover(db, node)
+
     if "cover_index" in data:
         names = reader.list_images(db, node)
         idx = data["cover_index"]
         if idx >= len(names):
             raise HTTPException(status_code=400, detail="cover_index out of range")
         node.cover_rel_path = names[idx]
+        node.cover_manual = True
     elif "cover_rel_path" in data:
-        node.cover_rel_path = data["cover_rel_path"]
+        cover = data["cover_rel_path"]
+        if cover is None:
+            node.cover_rel_path = None
+            if data.get("cover_manual") is False:
+                node.cover_manual = False
+                if node.node_type == constants.CONTAINER and node.image_count == 0:
+                    node.cover_rel_path = inherit_container_cover(db, node)
+        else:
+            allowed = candidate_values(db, node)
+            if node.image_count > 0 and node.node_type != constants.CONTAINER:
+                names = reader.list_images(db, node)
+                allowed = allowed | set(names)
+            if cover not in allowed:
+                raise HTTPException(status_code=400, detail="invalid cover_rel_path")
+            node.cover_rel_path = cover
+            node.cover_manual = True
+            try:
+                resolve_cover_source(node, db, reader, settings)
+            except HTTPException as exc:
+                raise HTTPException(status_code=400, detail="cover not found") from exc
+    elif data.get("cover_manual") is True:
+        node.cover_manual = True
 
     node.updated_at = time.time()
     db.commit()
@@ -206,6 +253,17 @@ def batch_move_nodes(
     moved, errors = move_nodes(db, body.ids, body.target_parent_id)
     reader.invalidate()
     return NodeMoveResponse(moved=moved, errors=errors)
+
+
+@router.get("/nodes/{node_id}/cover/candidates", response_model=CoverCandidateListResponse)
+def list_node_cover_candidates(node_id: int, db: Session = Depends(get_db)) -> CoverCandidateListResponse:
+    node = db.get(Node, node_id)
+    if node is None:
+        raise HTTPException(status_code=404, detail="node not found")
+    if node.node_type == constants.ALBUM:
+        raise HTTPException(status_code=400, detail="album node uses local images for cover")
+    items = [CoverCandidate(**item) for item in list_cover_candidates(db, node)]
+    return CoverCandidateListResponse(node_id=node.id, items=items)
 
 
 @router.get("/nodes/{node_id}/images", response_model=ImageListResponse)

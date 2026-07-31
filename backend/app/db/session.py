@@ -62,6 +62,12 @@ def _migrate_schema(conn) -> None:
     if "subdir_count" not in cols:
         logger.info("migrating schema: add nodes.subdir_count")
         conn.execute(text("ALTER TABLE nodes ADD COLUMN subdir_count INTEGER DEFAULT 0"))
+    if "archive_count" not in cols:
+        logger.info("migrating schema: add nodes.archive_count")
+        conn.execute(text("ALTER TABLE nodes ADD COLUMN archive_count INTEGER DEFAULT 0"))
+    if "cover_manual" not in cols:
+        logger.info("migrating schema: add nodes.cover_manual")
+        conn.execute(text("ALTER TABLE nodes ADD COLUMN cover_manual INTEGER DEFAULT 0"))
 
     scan_cols = {row[1] for row in conn.execute(text("PRAGMA table_info(scan_jobs)")).fetchall()}
     if scan_cols and "source" not in scan_cols:

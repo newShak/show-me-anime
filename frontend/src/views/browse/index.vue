@@ -75,6 +75,17 @@
               <div>
                 <h1>{{ pageTitle }}</h1>
                 <p class="subtitle">{{ subtitle }}</p>
+                <div v-if="currentNodeTags.length" class="node-tags">
+                  <el-tag
+                    v-for="tag in currentNodeTags"
+                    :key="tag.id"
+                    size="small"
+                    class="node-tag"
+                    @click="onCurrentTagClick(tag)"
+                  >
+                    {{ tag.name }}
+                  </el-tag>
+                </div>
               </div>
               <div v-if="currentNode" class="head-actions">
                 <el-button
@@ -315,6 +326,11 @@ const isCurrentFavorite = computed(
   () => currentNode.value != null && favoriteIds.value.includes(currentNode.value.id),
 )
 
+const currentNodeTags = computed(() => {
+  const id = currentNode.value?.id
+  return id != null ? (nodeTagsMap.value[id] ?? []) : []
+})
+
 const pageTitle = computed(() =>
   nodeId.value == null ? '画廊' : currentNode.value?.name ?? '加载中...',
 )
@@ -323,8 +339,14 @@ const subtitle = computed(() => {
   if (currentNode.value && isAlbumView.value) {
     return `${images.value.length} 张图片`
   }
+  if (currentNode.value) {
+    const parts: string[] = []
+    if (currentNode.value.subdir_count > 0) parts.push(`${currentNode.value.subdir_count} 个文件夹`)
+    if (currentNode.value.archive_count > 0) parts.push(`${currentNode.value.archive_count} 个压缩包`)
+    if (parts.length) return parts.join(' · ')
+  }
   const count = nodes.value.length
-  return count ? `${count} 个相册` : '暂无相册'
+  return count ? `${count} 项` : '暂无内容'
 })
 
 const showCrumbs = computed(() => crumbs.value.length > 1)
@@ -343,7 +365,11 @@ const openEdit = (node: NodeItem) => {
   editOpen.value = true
 }
 
-const onEditSaved = async () => {
+const onEditSaved = async (node?: NodeItem) => {
+  if (node) {
+    if (currentNode.value?.id === node.id) currentNode.value = node
+    nodes.value = nodes.value.map((n) => (n.id === node.id ? node : n))
+  }
   await loadView(nodeId.value)
 }
 
@@ -372,7 +398,15 @@ const loadNodeTags = async (ids: number[]) => {
   nodeTagsMap.value = Object.fromEntries(data.map((g) => [g.node_id, g.tags]))
 }
 
-const refreshTags = () => loadNodeTags(nodes.value.map((n) => n.id))
+const refreshTags = () => {
+  const ids = nodes.value.map((n) => n.id)
+  if (currentNode.value) ids.push(currentNode.value.id)
+  loadNodeTags([...new Set(ids)])
+}
+
+const onCurrentTagClick = (tag: TagItem) => {
+  goSearch('', [tag.id])
+}
 
 const loadProgress = async () => {
   const albums = nodes.value.filter((n) => n.node_type !== 'container' && n.image_count > 0)
@@ -620,8 +654,6 @@ const goTo = (id: number | null) => {
 
 const onTreeSelect = (id: number | null) => {
   goTo(id)
-  sidebarCollapsed.value = true
-  localStorage.setItem(SIDEBAR_KEY, '1')
 }
 
 const onOpenNode = (node: NodeItem) => {
@@ -824,6 +856,17 @@ h1 {
   margin: 6px 0 0;
   font-size: 14px;
   color: var(--app-text-muted);
+}
+
+.node-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.node-tag {
+  cursor: pointer;
 }
 
 .head-actions {

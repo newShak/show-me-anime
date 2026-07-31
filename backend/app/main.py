@@ -12,8 +12,9 @@ from starlette.responses import FileResponse
 
 from app.api import health, library, nodes, scan, search, settings as settings_api, tags, tasks
 from app.config import get_settings
-from app.db.session import init_db
+from app.db.session import SessionLocal, get_engine, init_db
 from app.logging_config import set_log_level, setup_logging
+from app.services.scan_runner import reconcile_stale_scan_jobs
 from app.services.watcher import start_gallery_watcher, stop_gallery_watcher
 
 setup_logging(get_settings().log_level)
@@ -53,6 +54,11 @@ async def lifespan(_: FastAPI):
         settings.database_url,
     )
     init_db()
+    db = SessionLocal(bind=get_engine())
+    try:
+        reconcile_stale_scan_jobs(db)
+    finally:
+        db.close()
     start_gallery_watcher()
     yield
     logger.info("shutting down")

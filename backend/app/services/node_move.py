@@ -105,15 +105,21 @@ def move_node_subtree(
         item.updated_at = now
         sync_node_search_index(db, item)
 
-    if old_parent_id is not None and node.source_type != constants.SOURCE_ZIP:
+    if old_parent_id is not None:
         old_parent = db.get(Node, old_parent_id)
         if old_parent is not None:
-            old_parent.subdir_count = max(0, old_parent.subdir_count - 1)
+            if node.source_type == constants.SOURCE_ZIP:
+                old_parent.archive_count = max(0, old_parent.archive_count - 1)
+            else:
+                old_parent.subdir_count = max(0, old_parent.subdir_count - 1)
 
-    if target_parent_id is not None and node.source_type != constants.SOURCE_ZIP:
+    if target_parent_id is not None:
         new_parent = db.get(Node, target_parent_id)
         if new_parent is not None:
-            new_parent.subdir_count += 1
+            if node.source_type == constants.SOURCE_ZIP:
+                new_parent.archive_count += 1
+            else:
+                new_parent.subdir_count += 1
 
     _refresh_container_covers(db, settings)
 

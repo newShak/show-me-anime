@@ -11,6 +11,7 @@ export const STATUS_LABELS: Record<string, string> = {
   running: '进行中',
   done: '完成',
   failed: '失败',
+  interrupted: '已中断',
 }
 
 export const SOURCE_LABELS: Record<string, string> = {
@@ -32,6 +33,7 @@ export const scanModeLabel = (mode?: string | null) => (mode ? SCAN_MODE_LABELS[
 export const statusTagType = (status: string) => {
   if (status === 'done') return 'success'
   if (status === 'failed') return 'danger'
+  if (status === 'interrupted') return 'info'
   if (status === 'running') return 'warning'
   return 'info'
 }
@@ -44,6 +46,7 @@ export const formatDuration = (start: number | null, end: number | null) => {
 }
 
 export const formatTaskResult = (row: TaskRecord) => {
+  if (row.status === 'interrupted') return row.message ?? '进程中断，任务未正常结束'
   if (row.task_type === 'scan') {
     const mode = scanModeLabel(row.mode)
     return `${mode} · 新增 ${row.added ?? 0}，更新 ${row.updated ?? 0}，移除 ${row.removed ?? 0}`

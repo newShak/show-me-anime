@@ -61,6 +61,8 @@ def test_zip_in_folder(client, gallery):
     assert len(top) == 1
     assert top[0]["name"] == "packs"
     assert top[0]["node_type"] == "container"
+    assert top[0]["archive_count"] == 2
+    assert top[0]["subdir_count"] == 0
 
     children = client.get("/api/nodes", params={"parent_id": top[0]["id"]}).json()
     assert len(children) == 2

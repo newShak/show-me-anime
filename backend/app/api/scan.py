@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 from app.db.models import ScanJob
 from app.db.session import get_db
 from app.schemas.scan import ScanJobResponse, ScanTriggerRequest
-from app.services.scan_runner import is_scan_running, run_scan
+from app.services.scan_runner import is_scan_running, reconcile_stale_scan_jobs, run_scan
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/scan", tags=["scan"])
@@ -29,4 +29,5 @@ def trigger_scan(body: ScanTriggerRequest = ScanTriggerRequest()) -> ScanJob:
 
 @router.get("/status", response_model=ScanJobResponse | None)
 def scan_status(db: Session = Depends(get_db)) -> ScanJob | None:
+    reconcile_stale_scan_jobs(db)
     return db.query(ScanJob).order_by(ScanJob.id.desc()).first()

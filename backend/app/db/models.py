@@ -2,7 +2,7 @@
 
 import time
 
-from sqlalchemy import Float, ForeignKey, Integer, String, Text
+from sqlalchemy import Boolean, Float, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 
@@ -21,7 +21,9 @@ class Node(Base):
     source_type: Mapped[str] = mapped_column(String, nullable=False, default="folder")
     image_count: Mapped[int] = mapped_column(Integer, default=0)
     subdir_count: Mapped[int] = mapped_column(Integer, default=0)
+    archive_count: Mapped[int] = mapped_column(Integer, default=0)
     cover_rel_path: Mapped[str | None] = mapped_column(String, nullable=True)
+    cover_manual: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     dir_mtime: Mapped[float | None] = mapped_column(Float, nullable=True)
     created_at: Mapped[float] = mapped_column(Float, default=lambda: time.time())
     updated_at: Mapped[float] = mapped_column(Float, default=lambda: time.time())

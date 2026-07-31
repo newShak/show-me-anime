@@ -1,2 +1,5 @@
 export const HOME_PREVIEW_COUNT = 4
 export const FAVORITES_PAGE_SIZE = 20
+export const RECENT_ADDED_GROUP_SIZE = 8
+export const RECENT_ADDED_DAYS_PER_PAGE = 7
+export const RECENT_ADDED_FETCH_LIMIT = 500

@@ -81,9 +81,9 @@ const load = async () => {
       fetchFavorites(0, HOME_PREVIEW_COUNT),
       loadFavoriteIds(),
     ])
-    addedTotal.value = addedRes.data.length
+    addedTotal.value = addedRes.data.total
     viewedTotal.value = viewedRes.data.length
-    recentAdded.value = addedRes.data.slice(0, HOME_PREVIEW_COUNT)
+    recentAdded.value = addedRes.data.items.slice(0, HOME_PREVIEW_COUNT)
     recentViewed.value = viewedRes.data.slice(0, HOME_PREVIEW_COUNT)
     favTotal.value = favRes.data.total
     favorites.value = favRes.data.items.slice(0, HOME_PREVIEW_COUNT)
