@@ -47,9 +47,10 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import DownloadPathPicker from '@/components/DownloadPathPicker.vue'
+import { getDownloadParentPath, saveDownloadParentPath } from '@/composables/useDownloadParentPath'
 import { createDownloadJobsBatch, fetchDownloadJob, retryDownloadJob } from '@/api/download'
 import { apiErrorMessage } from '@/api/http'
 import { albumFolderName, joinTargetPath } from '@/utils/downloadPath'
@@ -58,7 +59,8 @@ import type { DownloadJob, RemoteAlbum } from '@/types/download'
 const props = defineProps<{ items: RemoteAlbum[] }>()
 const visible = defineModel<boolean>({ default: false })
 
-const parentPath = ref('imports/wnacg')
+const defaultParentPath = () => getDownloadParentPath() || 'imports/wnacg'
+const parentPath = ref(defaultParentPath())
 const submitting = ref(false)
 const retryingId = ref<string | null>(null)
 const retryingAll = ref(false)
@@ -109,6 +111,7 @@ const pollJobs = async () => {
 
 const onSubmit = async () => {
   if (!props.items.length) return
+  saveDownloadParentPath(parentPath.value)
   submitting.value = true
   try {
     const { data } = await createDownloadJobsBatch({
@@ -163,10 +166,14 @@ const onRetryFailed = async () => {
 
 const onClosed = () => {
   jobs.value = []
-  parentPath.value = 'imports/wnacg'
+  parentPath.value = defaultParentPath()
   retryingId.value = null
   retryingAll.value = false
 }
+
+watch(visible, (open) => {
+  if (open && !jobs.value.length) parentPath.value = defaultParentPath()
+})
 
 defineExpose({
   setParentPath: (path: string) => {

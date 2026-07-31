@@ -62,6 +62,7 @@ import { ElMessage } from 'element-plus'
 import { createDownloadJob, fetchDownloadJob, fetchRemoteDetail, fetchRemotePreviews, retryDownloadJob } from '@/api/download'
 import { apiErrorMessage } from '@/api/http'
 import DownloadPathPicker from '@/components/DownloadPathPicker.vue'
+import { getDownloadParentPath, saveDownloadParentPath } from '@/composables/useDownloadParentPath'
 import { albumFolderName, joinTargetPath, parentFromTarget } from '@/utils/downloadPath'
 import type { DownloadJob, RemoteAlbum, RemoteDetail } from '@/types/download'
 
@@ -122,7 +123,10 @@ const load = async (item: RemoteAlbum) => {
     previewUrls.value = data.preview_urls
     previewHasMore.value = data.preview_has_more
     previewTotal.value = data.preview_total || data.preview_urls.length
-    parentPath.value = data.default_parent_rel_path || parentFromTarget(data.default_target_rel_path)
+    parentPath.value =
+      getDownloadParentPath() ||
+      data.default_parent_rel_path ||
+      parentFromTarget(data.default_target_rel_path)
   } catch {
     ElMessage.error('加载详情失败')
     visible.value = false
@@ -186,6 +190,7 @@ const onRetry = async () => {
 
 const onDownload = async () => {
   if (!props.item || !detail.value || !targetPath.value) return
+  saveDownloadParentPath(parentPath.value)
   downloading.value = true
   try {
     const { data } = await createDownloadJob({
