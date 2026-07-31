@@ -1,6 +1,6 @@
 import { http } from './http'
 import type { NodeSort } from '@/composables/useNodeSort'
-import type { ImageList, NodeBatchDeleteResult, NodeItem, NodeUpdate } from '@/types/node'
+import type { ImageList, NodeBatchDeleteResult, NodeItem, NodeMovePayload, NodeMoveResult, NodeUpdate } from '@/types/node'
 import type { ReadProgress } from '@/types/progress'
 
 export const fetchNodes = (parentId?: number, sort?: NodeSort) =>
@@ -10,6 +10,14 @@ export const fetchNodes = (parentId?: number, sort?: NodeSort) =>
       ...(sort ? { sort_by: sort.sortBy, sort_order: sort.sortOrder } : {}),
     },
   })
+
+export const fetchRecentNodes = (limit = 20) =>
+  http.get<NodeItem[]>('/nodes/recent', { params: { limit } })
+
+export const fetchNodesBatch = (ids: number[]) =>
+  ids.length
+    ? http.get<NodeItem[]>('/nodes/batch', { params: { ids: ids.join(',') } })
+    : Promise.resolve({ data: [] as NodeItem[] })
 
 export const fetchNode = (id: number) => http.get<NodeItem>(`/nodes/${id}`)
 
@@ -35,3 +43,6 @@ export const imageFileUrl = (nodeId: number, index: number, v?: number) =>
 
 export const deleteNodes = (ids: number[]) =>
   http.post<NodeBatchDeleteResult>('/nodes/batch-delete', { ids })
+
+export const moveNodes = (body: NodeMovePayload) =>
+  http.post<NodeMoveResult>('/nodes/move', body)

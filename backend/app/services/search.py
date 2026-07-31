@@ -1,9 +1,11 @@
 """搜索索引与查询（名称/路径/标签包含匹配）。"""
 
-from sqlalchemy import text
+from sqlalchemy import func, text
 from sqlalchemy.orm import Session
 
 from app.db.models import Node, NodeTag
+
+TagSearchMode = str  # "or" | "and"
 
 
 def sync_node_search(db: Session, node_id: int, title: str, path: str, tags: str = "") -> None:
@@ -88,9 +90,18 @@ def _text_match_ids(db: Session, q: str) -> set[int]:
     return {row[0] for row in rows}
 
 
-def _tag_match_ids(db: Session, tag_ids: list[int]) -> set[int]:
+def _tag_match_ids(db: Session, tag_ids: list[int], mode: TagSearchMode = "or") -> set[int]:
     if not tag_ids:
         return set()
+    if mode == "and" and len(tag_ids) > 1:
+        rows = (
+            db.query(NodeTag.node_id)
+            .filter(NodeTag.tag_id.in_(tag_ids))
+            .group_by(NodeTag.node_id)
+            .having(func.count(func.distinct(NodeTag.tag_id)) == len(tag_ids))
+            .all()
+        )
+        return {row[0] for row in rows}
     rows = (
         db.query(NodeTag.node_id)
         .filter(NodeTag.tag_id.in_(tag_ids))
@@ -100,9 +111,15 @@ def _tag_match_ids(db: Session, tag_ids: list[int]) -> set[int]:
     return {row[0] for row in rows}
 
 
-def search_nodes_by_tags(db: Session, tag_ids: list[int], limit: int = 20, offset: int = 0) -> tuple[list[Node], int]:
-    """按标签搜索，多个标签为 OR 关系。"""
-    ids = _tag_match_ids(db, tag_ids)
+def search_nodes_by_tags(
+    db: Session,
+    tag_ids: list[int],
+    limit: int = 20,
+    offset: int = 0,
+    mode: TagSearchMode = "or",
+) -> tuple[list[Node], int]:
+    """按标签搜索，mode 为 or（任一）或 and（全部）。"""
+    ids = _tag_match_ids(db, tag_ids, mode)
     if not ids:
         return [], 0
     total = len(ids)
@@ -123,14 +140,15 @@ def search_nodes_filtered(
     tag_ids: list[int] | None = None,
     limit: int = 20,
     offset: int = 0,
+    tag_mode: TagSearchMode = "or",
 ) -> tuple[list[Node], int]:
-    """关键词与标签组合搜索；同时存在时为 AND，标签之间为 OR。"""
+    """关键词与标签组合搜索；同时存在时为 AND，标签之间由 tag_mode 决定。"""
     ids: set[int] | None = None
     if q and q.strip():
         text_ids = _text_match_ids(db, q.strip())
         ids = text_ids
     if tag_ids:
-        tag_node_ids = _tag_match_ids(db, tag_ids)
+        tag_node_ids = _tag_match_ids(db, tag_ids, tag_mode)
         ids = tag_node_ids if ids is None else ids & tag_node_ids
     if ids is None:
         return [], 0

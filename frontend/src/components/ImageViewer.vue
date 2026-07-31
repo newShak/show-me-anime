@@ -10,6 +10,9 @@
         <el-button text :type="mode === 'scroll' ? 'primary' : undefined" @click="emit('mode-change', 'scroll')">
           滚动
         </el-button>
+        <el-button text :type="favorited ? 'warning' : undefined" @click="emit('toggle-favorite')">
+          <el-icon><StarFilled v-if="favorited" /><Star v-else /></el-icon>
+        </el-button>
       </div>
       <span class="page">{{ page + 1 }} / {{ total }}</span>
     </header>
@@ -30,6 +33,7 @@
 
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
+import { Star, StarFilled } from '@element-plus/icons-vue'
 import { imageFileUrl } from '@/api/nodes'
 import type { ReaderMode } from '@/types/reader'
 
@@ -40,12 +44,14 @@ const props = defineProps<{
   title: string
   mode: ReaderMode
   cacheVersion?: number
+  favorited?: boolean
 }>()
 
 const emit = defineEmits<{
   close: []
   change: [page: number]
   'mode-change': [mode: ReaderMode]
+  'toggle-favorite': []
 }>()
 
 const rootRef = ref<HTMLElement | null>(null)

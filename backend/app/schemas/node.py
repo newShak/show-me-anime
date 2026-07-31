@@ -42,3 +42,13 @@ class NodeBatchDelete(BaseModel):
 class NodeBatchDeleteResponse(BaseModel):
     deleted: int
     errors: list[str] = []
+
+
+class NodeMove(BaseModel):
+    ids: list[int] = Field(min_length=1)
+    target_parent_id: int | None = None
+
+
+class NodeMoveResponse(BaseModel):
+    moved: int
+    errors: list[str] = []

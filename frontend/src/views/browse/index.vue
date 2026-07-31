@@ -1,13 +1,15 @@
 <template>
   <div class="browse">
     <div class="layout" :class="{ collapsed: sidebarCollapsed }">
-      <aside v-show="!sidebarCollapsed" class="sidebar">
-        <div class="sidebar-head">
-          <span>目录</span>
-          <el-button text class="toggle-btn" @click="toggleSidebar">×</el-button>
-        </div>
-        <div class="sidebar-tree">
-          <NodeTree @select="onTreeSelect" />
+      <aside class="sidebar" :class="{ collapsed: sidebarCollapsed }">
+        <div class="sidebar-inner">
+          <div class="sidebar-head">
+            <span>目录</span>
+            <el-button text class="toggle-btn" @click="toggleSidebar">×</el-button>
+          </div>
+          <div class="sidebar-tree">
+            <NodeTree @select="onTreeSelect" />
+          </div>
         </div>
       </aside>
 
@@ -48,6 +50,14 @@
               <el-button
                 text
                 size="small"
+                :disabled="!selectedIds.length"
+                @click="openMovePicker(selectedIds)"
+              >
+                移动{{ selectedIds.length ? ` (${selectedIds.length})` : '' }}
+              </el-button>
+              <el-button
+                text
+                size="small"
                 type="danger"
                 :disabled="!selectedIds.length"
                 :loading="deleting"
@@ -67,7 +77,16 @@
                 <p class="subtitle">{{ subtitle }}</p>
               </div>
               <div v-if="currentNode" class="head-actions">
-                <el-button text @click="editOpen = true">编辑</el-button>
+                <el-button
+                  v-if="canFavoriteCurrent"
+                  text
+                  :type="isCurrentFavorite ? 'warning' : undefined"
+                  @click="onToggleCurrentFavorite"
+                >
+                  <el-icon><StarFilled v-if="isCurrentFavorite" /><Star v-else /></el-icon>
+                  {{ isCurrentFavorite ? '已收藏' : '收藏' }}
+                </el-button>
+                <el-button text @click="openEdit(currentNode)">编辑</el-button>
                 <el-button v-if="isAlbumView && images.length" type="primary" round @click="startRead">
                   阅读
                 </el-button>
@@ -78,8 +97,11 @@
             <div class="search-row">
               <SearchBar
                 full
+                show-history
+                :tags="allTags"
                 placeholder="搜索相册名、路径..."
                 @search="onTextSearch"
+                @pick="onSearchHistoryPick"
               />
               <TagSelect
                 v-model="filterTagIds"
@@ -89,6 +111,12 @@
                 placeholder="按标签筛选"
                 width="200px"
                 @change="onTagFilterChange"
+              />
+              <el-segmented
+                v-if="filterTagIds.length > 1"
+                v-model="tagMode"
+                :options="TAG_SEARCH_MODE_OPTIONS"
+                size="small"
               />
             </div>
           </header>
@@ -104,9 +132,15 @@
                 :selected-ids="selectedIds"
                 :node-tags="nodeTagsMap"
                 :progress-map="progressPercentMap"
+                :favorite-ids="favoriteIds"
+                show-menu
+                show-favorite
                 @toggle="toggleSelect"
                 @open="onOpenNode"
+                @toggle-favorite="onToggleFavorite"
+                @edit="openEdit"
                 @add-tags="(node) => openTagPicker([node.id])"
+                @move="(node) => openMovePicker([node.id])"
                 @delete="onDeleteNode"
               />
             </template>
@@ -117,9 +151,15 @@
                 :selected-ids="selectedIds"
                 :node-tags="nodeTagsMap"
                 :progress-map="progressPercentMap"
+                :favorite-ids="favoriteIds"
+                show-menu
+                show-favorite
                 @toggle="toggleSelect"
                 @open="onOpenNode"
+                @toggle-favorite="onToggleFavorite"
+                @edit="openEdit"
                 @add-tags="(node) => openTagPicker([node.id])"
+                @move="(node) => openMovePicker([node.id])"
                 @delete="onDeleteNode"
               />
             </template>
@@ -128,7 +168,7 @@
       </main>
     </div>
 
-    <NodeEditDialog v-model="editOpen" :node="currentNode" @saved="loadView(nodeId)" />
+    <NodeEditDialog v-model="editOpen" :node="editNode" @saved="onEditSaved" @closed="editNode = null" />
 
     <TagPickerDialog
       v-model="tagPickerOpen"
@@ -141,13 +181,22 @@
       @remove="onTagPickerRemove"
       @tag-created="onTagCreated"
     />
+
+    <NodeMoveDialog
+      v-model="movePickerOpen"
+      :title="movePickerTitle"
+      :exclude-paths="moveExcludePaths"
+      :submitting="moving"
+      @confirm="onMoveConfirm"
+    />
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import { Star, StarFilled } from '@element-plus/icons-vue'
 import SearchBar from '@/components/SearchBar.vue'
 import TagSelect from '@/components/TagSelect.vue'
 import AlbumGrid from '@/components/AlbumGrid.vue'
@@ -155,8 +204,9 @@ import BreadcrumbNav from '@/components/BreadcrumbNav.vue'
 import ImageGrid from '@/components/ImageGrid.vue'
 import NodeTree from '@/components/NodeTree.vue'
 import NodeEditDialog from '@/components/NodeEditDialog.vue'
+import NodeMoveDialog from '@/components/NodeMoveDialog.vue'
 import TagPickerDialog from '@/components/TagPickerDialog.vue'
-import { fetchNode, fetchNodeImages, fetchNodes, fetchNodesProgress, fetchProgress, deleteNodes } from '@/api/nodes'
+import { fetchNode, fetchNodeImages, fetchNodes, fetchNodesProgress, fetchProgress, deleteNodes, moveNodes } from '@/api/nodes'
 import { batchAddNodeTags, fetchNodesTags, fetchTags, removeNodeTag } from '@/api/tags'
 import {
   getStoredSort,
@@ -164,6 +214,11 @@ import {
   saveSort,
   SORT_OPTIONS,
 } from '@/composables/useNodeSort'
+import { saveBrowseScroll, getBrowseScroll, clearBrowseScroll } from '@/composables/useBrowseScroll'
+import { addSearchHistory, type SearchHistoryItem } from '@/composables/useSearchHistory'
+import { fetchFavoriteIds, toggleFavorite } from '@/composables/useFavorites'
+import { touchRecentView } from '@/composables/useRecentView'
+import { parseTagSearchMode, TAG_SEARCH_MODE_OPTIONS, type TagSearchMode } from '@/types/search'
 import type { ImageItem, NodeItem } from '@/types/node'
 import type { TagItem } from '@/types/tag'
 
@@ -177,6 +232,7 @@ const images = ref<ImageItem[]>([])
 const currentNode = ref<NodeItem | null>(null)
 const crumbs = ref<Crumb[]>([{ id: null, name: '画廊' }])
 const editOpen = ref(false)
+const editNode = ref<NodeItem | null>(null)
 const selectMode = ref(false)
 const selectedIds = ref<number[]>([])
 const deleting = ref(false)
@@ -186,7 +242,12 @@ const progressPercentMap = ref<Record<number, number>>({})
 const tagPickerOpen = ref(false)
 const tagPickerNodeIds = ref<number[]>([])
 const tagPickerSubmitting = ref(false)
+const movePickerOpen = ref(false)
+const moveNodeIds = ref<number[]>([])
+const moving = ref(false)
 const filterTagIds = ref<number[]>([])
+const tagMode = ref<TagSearchMode>('or')
+const favoriteIds = ref<number[]>([])
 const SIDEBAR_KEY = 'sidebar-collapsed'
 const sidebarCollapsed = ref(localStorage.getItem(SIDEBAR_KEY) !== '0')
 const stored = getStoredSort()
@@ -203,16 +264,36 @@ const onSortChange = () => {
   loadView(nodeId.value)
 }
 
-const onTextSearch = (q: string) => {
+const buildSearchQuery = (q: string, tagIds: number[], mode: TagSearchMode = 'or') => {
   const query: Record<string, string> = {}
   if (q) query.q = q
-  if (filterTagIds.value.length) query.tags = filterTagIds.value.join(',')
-  router.push({ path: '/search', query })
+  if (tagIds.length) {
+    query.tags = tagIds.join(',')
+    if (tagIds.length > 1 && mode === 'and') query.tag_mode = 'and'
+  }
+  return query
+}
+
+const goSearch = (q: string, tagIds: number[] = [], mode: TagSearchMode = 'or') => {
+  router.push({ path: '/search', query: buildSearchQuery(q, tagIds, mode) })
+}
+
+const onTextSearch = (q: string, commit?: boolean) => {
+  const trimmed = q.trim()
+  if (!trimmed && !filterTagIds.value.length) return
+  if (trimmed || commit) addSearchHistory(q, filterTagIds.value, tagMode.value)
+  goSearch(q, filterTagIds.value, tagMode.value)
+}
+
+const onSearchHistoryPick = (item: SearchHistoryItem) => {
+  tagMode.value = parseTagSearchMode(item.tagMode)
+  goSearch(item.q, item.tagIds, tagMode.value)
 }
 
 const onTagFilterChange = () => {
   if (!filterTagIds.value.length) return
-  router.push({ path: '/search', query: { tags: filterTagIds.value.join(',') } })
+  addSearchHistory('', filterTagIds.value, tagMode.value)
+  goSearch('', filterTagIds.value, tagMode.value)
 }
 
 const nodeId = computed(() => {
@@ -222,6 +303,16 @@ const nodeId = computed(() => {
 
 const isAlbumView = computed(
   () => currentNode.value != null && currentNode.value.node_type !== 'container',
+)
+
+const canFavoriteCurrent = computed(
+  () =>
+    currentNode.value != null &&
+    (currentNode.value.node_type !== 'container' || currentNode.value.image_count > 0),
+)
+
+const isCurrentFavorite = computed(
+  () => currentNode.value != null && favoriteIds.value.includes(currentNode.value.id),
 )
 
 const pageTitle = computed(() =>
@@ -245,6 +336,15 @@ const allSelected = computed(
 const clearSelection = () => {
   selectMode.value = false
   selectedIds.value = []
+}
+
+const openEdit = (node: NodeItem) => {
+  editNode.value = node
+  editOpen.value = true
+}
+
+const onEditSaved = async () => {
+  await loadView(nodeId.value)
 }
 
 const toggleSelectMode = () => {
@@ -297,6 +397,46 @@ const tagPickerTitle = computed(() =>
     ? `批量标签（${tagPickerNodeIds.value.length} 项）`
     : '标签',
 )
+
+const movePickerTitle = computed(() =>
+  moveNodeIds.value.length > 1
+    ? `移动 ${moveNodeIds.value.length} 项到`
+    : '移动到',
+)
+
+const moveExcludePaths = computed(() =>
+  nodes.value.filter((n) => moveNodeIds.value.includes(n.id)).map((n) => n.path),
+)
+
+const openMovePicker = (nodeIds: number[]) => {
+  moveNodeIds.value = nodeIds
+  movePickerOpen.value = true
+}
+
+const onMoveConfirm = async (targetParentId: number | null) => {
+  if (!moveNodeIds.value.length) return
+  moving.value = true
+  try {
+    const { data } = await moveNodes({ ids: moveNodeIds.value, target_parent_id: targetParentId })
+    if (data.errors.length) {
+      ElMessage.warning(
+        data.moved > 0
+          ? `已移动 ${data.moved} 项，部分失败：${data.errors.join('; ')}`
+          : data.errors.join('; '),
+      )
+    } else {
+      ElMessage.success(`已移动 ${data.moved} 项`)
+    }
+    movePickerOpen.value = false
+    moveNodeIds.value = []
+    clearSelection()
+    await loadView(nodeId.value)
+  } catch {
+    ElMessage.error('移动失败')
+  } finally {
+    moving.value = false
+  }
+}
 
 const tagPickerExistingTags = computed(() => {
   const ids = tagPickerNodeIds.value
@@ -436,6 +576,15 @@ const loadCrumbs = async (id: number | null) => {
   crumbs.value = [...chain, ...stack]
 }
 
+const applyBrowseScroll = async () => {
+  const top = getBrowseScroll(nodeId.value)
+  if (top == null) return
+  await nextTick()
+  await new Promise<void>((r) => requestAnimationFrame(() => r()))
+  window.scrollTo(0, top)
+  clearBrowseScroll(nodeId.value)
+}
+
 const loadView = async (id: number | null) => {
   const sort = nodeSort.value
   if (id == null) {
@@ -465,6 +614,7 @@ const loadView = async (id: number | null) => {
 
 const goTo = (id: number | null) => {
   clearSelection()
+  if (id != null) touchRecentView(id)
   router.push(id == null ? '/browse' : `/browse/${id}`)
 }
 
@@ -474,10 +624,26 @@ const onTreeSelect = (id: number | null) => {
   localStorage.setItem(SIDEBAR_KEY, '1')
 }
 
-const onOpenNode = (node: NodeItem) => goTo(node.id)
+const onOpenNode = (node: NodeItem) => {
+  touchRecentView(node.id)
+  goTo(node.id)
+}
+
+const onToggleFavorite = async (node: NodeItem) => {
+  const { data } = await toggleFavorite(node.id)
+  favoriteIds.value = data.favorited
+    ? [...new Set([...favoriteIds.value, node.id])]
+    : favoriteIds.value.filter((id) => id !== node.id)
+}
+
+const onToggleCurrentFavorite = async () => {
+  if (!currentNode.value) return
+  await onToggleFavorite(currentNode.value)
+}
 
 const openReader = (page = 0) => {
   if (!currentNode.value) return
+  saveBrowseScroll(nodeId.value)
   router.push({
     path: `/reader/${currentNode.value.id}`,
     query: { page, mode: 'scroll' },
@@ -510,7 +676,10 @@ const startRead = async () => {
   }
 }
 
-watch(nodeId, (id) => loadView(id), { immediate: true })
+watch(nodeId, async (id) => {
+  await loadView(id)
+  await applyBrowseScroll()
+}, { immediate: true })
 
 watch(
   () => nodes.value.map((n) => n.id).join(','),
@@ -518,8 +687,9 @@ watch(
 )
 
 onMounted(async () => {
-  allTags.value = (await fetchTags()).data
-  await loadView(nodeId.value)
+  const [tagsRes, favIdsRes] = await Promise.all([fetchTags(), fetchFavoriteIds()])
+  allTags.value = tagsRes.data
+  favoriteIds.value = favIdsRes.data
 })
 </script>
 
@@ -536,11 +706,31 @@ onMounted(async () => {
 .sidebar {
   width: 240px;
   flex-shrink: 0;
+  overflow: hidden;
   border-right: 1px solid var(--app-border);
-  padding: 16px 12px;
   background: var(--app-surface);
+  transition: width 0.28s ease, border-color 0.28s ease;
+}
+
+.sidebar.collapsed {
+  width: 0;
+  border-right-color: transparent;
+}
+
+.sidebar-inner {
+  width: 240px;
+  height: 100%;
+  min-height: calc(100vh - 52px);
+  padding: 16px 12px;
   display: flex;
   flex-direction: column;
+  opacity: 1;
+  transition: opacity 0.2s ease;
+}
+
+.sidebar.collapsed .sidebar-inner {
+  opacity: 0;
+  pointer-events: none;
 }
 
 .sidebar-head {

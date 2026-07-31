@@ -1,87 +1,158 @@
 <template>
   <div class="home">
-    <el-card shadow="never">
-      <template #header>
-        <div class="head">
-          <span>show-me-anime</span>
-          <div class="actions">
-            <el-button type="primary" link @click="$router.push('/browse')">进入画廊</el-button>
-            <el-button type="primary" link @click="$router.push('/admin/settings')">管理</el-button>
-            <el-tag :type="healthOk ? 'success' : 'danger'">
-              {{ healthOk ? '后端已连接' : '后端未连接' }}
-            </el-tag>
-          </div>
-        </div>
-      </template>
-
-      <el-skeleton v-if="loading" :rows="4" animated />
-      <el-descriptions v-else-if="settings" :column="1" border>
-        <el-descriptions-item label="画廊根目录">
-          {{ settings.gallery_root }}
-        </el-descriptions-item>
-        <el-descriptions-item label="缩略图目录">
-          {{ settings.thumb_dir }}
-        </el-descriptions-item>
-        <el-descriptions-item label="数据库">
-          {{ settings.database_url }}
-        </el-descriptions-item>
-        <el-descriptions-item label="监听目录">
-          {{ settings.watch_enabled ? '开启' : '关闭' }}
-        </el-descriptions-item>
-      </el-descriptions>
-
-      <el-alert
-        v-else
-        type="warning"
-        :closable="false"
-        title="无法读取配置，请确认后端已启动。"
+    <section v-for="block in blocks" :key="block.key" class="section">
+      <div class="section-head">
+        <h2>{{ block.title }}</h2>
+        <span v-if="block.total" class="count">{{ block.total }}</span>
+        <router-link :to="block.moreTo" class="more">更多</router-link>
+      </div>
+      <el-skeleton v-if="loading" :rows="2" animated />
+      <AlbumGrid
+        v-else-if="block.nodes.length"
+        :nodes="block.nodes"
+        :node-tags="nodeTagsMap"
+        :progress-map="progressPercentMap"
+        :favorite-ids="favoriteIds"
+        :show-menu="false"
+        @open="openNode"
+        @toggle-favorite="onToggleFavorite"
       />
-    </el-card>
+      <el-empty v-else :description="block.empty" />
+    </section>
   </div>
 </template>
 
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
-import { fetchHealth, fetchSettings } from '@/api/settings'
-import type { Settings } from '@/types/settings'
+import { computed, onMounted, ref } from 'vue'
+import { useRouter } from 'vue-router'
+import AlbumGrid from '@/components/AlbumGrid.vue'
+import { fetchRecentNodes } from '@/api/nodes'
+import { fetchFavorites, touchRecentView } from '@/api/library'
+import { fetchRecentViewed } from '@/composables/useRecentView'
+import { toggleFavorite } from '@/composables/useFavorites'
+import { useNodeGridMeta } from '@/composables/useNodeGridMeta'
+import { HOME_PREVIEW_COUNT } from '@/constants/home'
+import type { NodeItem } from '@/types/node'
+
+const router = useRouter()
+const { nodeTagsMap, progressPercentMap, favoriteIds, loadFavoriteIds, loadMeta } = useNodeGridMeta()
 
 const loading = ref(true)
-const healthOk = ref(false)
-const settings = ref<Settings | null>(null)
+const recentAdded = ref<NodeItem[]>([])
+const recentViewed = ref<NodeItem[]>([])
+const favorites = ref<NodeItem[]>([])
+const favTotal = ref(0)
+const addedTotal = ref(0)
+const viewedTotal = ref(0)
 
-onMounted(async () => {
+const blocks = computed(() => [
+  {
+    key: 'added',
+    title: '最近添加',
+    nodes: recentAdded.value,
+    total: addedTotal.value,
+    empty: '暂无新相册',
+    moreTo: '/recent-added',
+  },
+  {
+    key: 'viewed',
+    title: '最近浏览',
+    nodes: recentViewed.value,
+    total: viewedTotal.value,
+    empty: '还没有浏览记录',
+    moreTo: '/recent-viewed',
+  },
+  {
+    key: 'fav',
+    title: '我的最爱',
+    nodes: favorites.value,
+    total: favTotal.value,
+    empty: '点击卡片上的星标收藏相册',
+    moreTo: '/favorites',
+  },
+])
+
+const load = async () => {
+  loading.value = true
   try {
-    await fetchHealth()
-    healthOk.value = true
-    const { data } = await fetchSettings()
-    settings.value = data
-  } catch {
-    healthOk.value = false
-    settings.value = null
+    const [addedRes, viewedRes, favRes] = await Promise.all([
+      fetchRecentNodes(),
+      fetchRecentViewed(),
+      fetchFavorites(0, HOME_PREVIEW_COUNT),
+      loadFavoriteIds(),
+    ])
+    addedTotal.value = addedRes.data.length
+    viewedTotal.value = viewedRes.data.length
+    recentAdded.value = addedRes.data.slice(0, HOME_PREVIEW_COUNT)
+    recentViewed.value = viewedRes.data.slice(0, HOME_PREVIEW_COUNT)
+    favTotal.value = favRes.data.total
+    favorites.value = favRes.data.items.slice(0, HOME_PREVIEW_COUNT)
+    await loadMeta([...recentAdded.value, ...recentViewed.value, ...favorites.value])
   } finally {
     loading.value = false
   }
-})
+}
+
+const openNode = (node: NodeItem) => {
+  touchRecentView(node.id)
+  router.push(`/browse/${node.id}`)
+}
+
+const onToggleFavorite = async (node: NodeItem) => {
+  const { data } = await toggleFavorite(node.id)
+  favoriteIds.value = data.favorited
+    ? [...new Set([...favoriteIds.value, node.id])]
+    : favoriteIds.value.filter((id) => id !== node.id)
+  if (data.favorited) {
+    favTotal.value += 1
+    favorites.value = [...favorites.value.filter((n) => n.id !== node.id), node].slice(0, HOME_PREVIEW_COUNT)
+  } else {
+    favTotal.value = Math.max(0, favTotal.value - 1)
+    favorites.value = favorites.value.filter((n) => n.id !== node.id)
+  }
+}
+
+onMounted(load)
 </script>
 
 <style scoped>
 .home {
-  max-width: 960px;
+  max-width: var(--app-page-width);
   margin: 0 auto;
-  padding: 24px;
+  padding: 32px 32px 60px;
 }
 
-.head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  font-size: 18px;
-  font-weight: 600;
+.section + .section {
+  margin-top: 40px;
 }
 
-.actions {
+.section-head {
   display: flex;
-  align-items: center;
-  gap: 12px;
+  align-items: baseline;
+  gap: 10px;
+  margin-bottom: 20px;
+}
+
+h2 {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+.count {
+  font-size: 13px;
+  color: var(--app-text-muted);
+}
+
+.more {
+  margin-left: auto;
+  font-size: 13px;
+  color: var(--el-color-primary);
+  text-decoration: none;
+}
+
+.more:hover {
+  opacity: 0.85;
 }
 </style>

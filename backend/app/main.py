@@ -10,7 +10,7 @@ from fastapi.staticfiles import StaticFiles
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.responses import FileResponse
 
-from app.api import health, nodes, scan, search, settings as settings_api, tags, tasks
+from app.api import health, library, nodes, scan, search, settings as settings_api, tags, tasks
 from app.config import get_settings
 from app.db.session import init_db
 from app.logging_config import set_log_level, setup_logging
@@ -27,12 +27,17 @@ class SPAStaticFiles(StaticFiles):
     """静态资源 + Vue Router history 回退到 index.html。"""
 
     async def get_response(self, path: str, scope):
+        is_spa_doc = False
         try:
-            return await super().get_response(path, scope)
+            response = await super().get_response(path, scope)
         except StarletteHTTPException as exc:
             if exc.status_code != 404:
                 raise
-            return FileResponse(STATIC_DIR / "index.html")
+            response = FileResponse(STATIC_DIR / "index.html")
+            is_spa_doc = True
+        if is_spa_doc or path in ("", "index.html"):
+            response.headers["Cache-Control"] = "no-cache"
+        return response
 
 
 @asynccontextmanager
@@ -67,6 +72,7 @@ app.add_middleware(
 app.include_router(health.router, prefix="/api")
 app.include_router(settings_api.router, prefix="/api")
 app.include_router(nodes.router, prefix="/api")
+app.include_router(library.router, prefix="/api")
 app.include_router(scan.router, prefix="/api")
 app.include_router(search.router, prefix="/api")
 app.include_router(tags.router, prefix="/api")

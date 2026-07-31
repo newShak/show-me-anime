@@ -36,6 +36,8 @@ class Settings(BaseSettings):
     watch_debounce_seconds: int = Field(default=3)
     album_list_cache_ttl: int = Field(default=300)
     log_level: str = Field(default="INFO")
+    recent_view_limit: int = Field(default=20, ge=1, le=100)
+    recent_added_limit: int = Field(default=20, ge=1, le=100)
     host: str = Field(default="0.0.0.0")
     port: int = Field(default=8000)
 
@@ -72,6 +74,8 @@ class Settings(BaseSettings):
             "watch_debounce_seconds": self.watch_debounce_seconds,
             "album_list_cache_ttl": self.album_list_cache_ttl,
             "log_level": self.log_level.upper(),
+            "recent_view_limit": self.recent_view_limit,
+            "recent_added_limit": self.recent_added_limit,
             "host": self.host,
             "port": self.port,
         }

@@ -16,6 +16,8 @@ class SettingsResponse(BaseModel):
     watch_debounce_seconds: int
     album_list_cache_ttl: int
     log_level: LogLevel = "INFO"
+    recent_view_limit: int = 20
+    recent_added_limit: int = 20
     host: str
     port: int
 
@@ -27,6 +29,8 @@ class SettingsUpdate(BaseModel):
     watch_enabled: bool | None = None
     watch_debounce_seconds: int | None = Field(default=None, ge=1, le=60)
     log_level: LogLevel | None = None
+    recent_view_limit: int | None = Field(default=None, ge=1, le=100)
+    recent_added_limit: int | None = Field(default=None, ge=1, le=100)
 
 
 class SettingsSaveResponse(SettingsResponse):

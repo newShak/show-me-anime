@@ -1,9 +1,14 @@
 <template>
   <nav class="app-nav">
-    <router-link to="/browse" class="brand">
-      <span class="logo" />
-      show-me-anime
-    </router-link>
+    <div class="brand-wrap">
+      <router-link to="/browse" class="brand">
+        <span class="logo" />
+        show-me-anime
+      </router-link>
+      <el-tag size="small" :type="healthOk ? 'success' : 'danger'" class="health">
+        {{ healthOk ? '已连接' : '未连接' }}
+      </el-tag>
+    </div>
     <div class="right">
       <div class="links">
         <router-link to="/" exact-active-class="active">首页</router-link>
@@ -22,8 +27,9 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useRoute } from 'vue-router'
+import { fetchHealth } from '@/api/settings'
 import { applyTheme, getTheme, type ThemeMode } from '@/composables/useTheme'
 
 const route = useRoute()
@@ -31,12 +37,22 @@ const isGallery = computed(() => route.path.startsWith('/browse') || route.path 
 const isAdmin = computed(() => route.path.startsWith('/admin'))
 
 const theme = ref<ThemeMode>(getTheme())
+const healthOk = ref(false)
 
 const onThemeChange = (dark: string | number | boolean) => {
   const mode: ThemeMode = dark ? 'dark' : 'light'
   theme.value = mode
   applyTheme(mode)
 }
+
+onMounted(async () => {
+  try {
+    await fetchHealth()
+    healthOk.value = true
+  } catch {
+    healthOk.value = false
+  }
+})
 </script>
 
 <style scoped>
@@ -48,6 +64,12 @@ const onThemeChange = (dark: string | number | boolean) => {
   height: 52px;
   background: var(--app-surface);
   border-bottom: 1px solid var(--app-border);
+}
+
+.brand-wrap {
+  display: flex;
+  align-items: center;
+  gap: 12px;
 }
 
 .brand {
@@ -65,6 +87,10 @@ const onThemeChange = (dark: string | number | boolean) => {
   height: 10px;
   border-radius: 50%;
   background: var(--el-color-primary);
+}
+
+.health {
+  flex-shrink: 0;
 }
 
 .right {

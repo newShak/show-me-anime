@@ -33,6 +33,16 @@ export type NodeBatchDeleteResult = {
   errors: string[]
 }
 
+export type NodeMovePayload = {
+  ids: number[]
+  target_parent_id: number | null
+}
+
+export type NodeMoveResult = {
+  moved: number
+  errors: string[]
+}
+
 export type ScanJob = {
   id: number
   status: string

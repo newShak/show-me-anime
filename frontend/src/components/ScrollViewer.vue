@@ -11,30 +11,35 @@
           滚动
         </el-button>
         <el-button text @click="toggleThumbs">{{ thumbsVisible ? '隐藏预览' : '显示预览' }}</el-button>
+        <el-button text :type="favorited ? 'warning' : undefined" @click="emit('toggle-favorite')">
+          <el-icon><StarFilled v-if="favorited" /><Star v-else /></el-icon>
+        </el-button>
       </div>
       <span class="page">{{ activePage + 1 }} / {{ total }}</span>
     </header>
 
     <div class="body">
-      <aside v-show="thumbsVisible" class="thumbs" ref="thumbRef" @scroll="onThumbScroll">
-        <div class="thumbs-phantom" :style="{ height: `${thumbTotalHeight}px` }">
-          <div class="thumbs-window" :style="{ transform: `translateY(${thumbOffset}px)` }">
-            <button
-              v-for="index in visibleThumbIndices"
-              :key="index"
-              class="thumb"
-              :class="{ active: activePage === index }"
-              :data-index="index"
-              :style="{ height: `${THUMB_IMG_HEIGHT}px` }"
-              @click="scrollTo(index)"
-            >
-              <img
-                :key="`${nodeId}-${index}-${cacheVersion}`"
-                :src="imageThumbUrl(nodeId, index, cacheVersion)"
-                :alt="`${index + 1}`"
-              />
-              <span>{{ index + 1 }}</span>
-            </button>
+      <aside class="thumbs" :class="{ visible: thumbsVisible }" ref="thumbRef" @scroll="onThumbScroll">
+        <div class="thumbs-inner">
+          <div class="thumbs-phantom" :style="{ height: `${thumbTotalHeight}px` }">
+            <div class="thumbs-window" :style="{ transform: `translateY(${thumbOffset}px)` }">
+              <button
+                v-for="index in visibleThumbIndices"
+                :key="index"
+                class="thumb"
+                :class="{ active: activePage === index }"
+                :data-index="index"
+                :style="{ height: `${THUMB_IMG_HEIGHT}px` }"
+                @click="scrollTo(index)"
+              >
+                <img
+                  :key="`${nodeId}-${index}-${cacheVersion}`"
+                  :src="imageThumbUrl(nodeId, index, cacheVersion)"
+                  :alt="`${index + 1}`"
+                />
+                <span>{{ index + 1 }}</span>
+              </button>
+            </div>
           </div>
         </div>
       </aside>
@@ -50,7 +55,7 @@
             :key="`${nodeId}-${i - 1}-${cacheVersion}`"
             :src="imageFileUrl(nodeId, i - 1, cacheVersion)"
             :alt="`${i}`"
-            loading="lazy"
+            :loading="i - 1 <= eagerUntil ? 'eager' : 'lazy'"
           />
         </figure>
       </main>
@@ -62,6 +67,7 @@
 
 <script setup lang="ts">
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
+import { Star, StarFilled } from '@element-plus/icons-vue'
 import { imageFileUrl, imageThumbUrl } from '@/api/nodes'
 import type { ReaderMode } from '@/types/reader'
 
@@ -81,12 +87,14 @@ const props = defineProps<{
   title: string
   mode: ReaderMode
   cacheVersion?: number
+  favorited?: boolean
 }>()
 
 const emit = defineEmits<{
   close: []
   change: [page: number]
   'mode-change': [mode: ReaderMode]
+  'toggle-favorite': []
 }>()
 
 const rootRef = ref<HTMLElement | null>(null)
@@ -94,7 +102,9 @@ const scrollRef = ref<HTMLElement | null>(null)
 const thumbRef = ref<HTMLElement | null>(null)
 const pageRefs = ref<(HTMLElement | null)[]>([])
 const activePage = ref(props.page)
+const eagerUntil = ref(props.page)
 const scrolling = ref(false)
+const initializing = ref(true)
 const thumbScrollTop = ref(0)
 const thumbViewHeight = ref(0)
 const thumbsVisible = ref(readThumbsVisible())
@@ -102,7 +112,12 @@ const thumbsVisible = ref(readThumbsVisible())
 const toggleThumbs = () => {
   thumbsVisible.value = !thumbsVisible.value
   localStorage.setItem(THUMBS_VISIBLE_KEY, thumbsVisible.value ? '1' : '0')
-  if (thumbsVisible.value) nextTick(syncThumbViewport)
+  if (thumbsVisible.value) {
+    nextTick(() => {
+      syncThumbViewport()
+      scrollThumbIntoView(activePage.value)
+    })
+  }
 }
 
 const thumbTotalHeight = computed(() => THUMB_PAD * 2 + props.total * THUMB_ITEM_HEIGHT)
@@ -150,18 +165,39 @@ const scrollThumbIntoView = (index: number) => {
   thumbScrollTop.value = el.scrollTop
 }
 
-const scrollTo = (index: number, smooth = true) => {
+const waitForImages = (index: number) => {
+  const waits: Promise<void>[] = []
+  for (let i = 0; i <= index; i++) {
+    const img = pageRefs.value[i]?.querySelector('img') as HTMLImageElement | null
+    if (!img || img.complete) continue
+    waits.push(
+      new Promise((resolve) => {
+        img.addEventListener('load', () => resolve(), { once: true })
+        img.addEventListener('error', () => resolve(), { once: true })
+      }),
+    )
+  }
+  return Promise.all(waits)
+}
+
+const scrollTo = async (index: number, smooth = true) => {
   const el = pageRefs.value[index]
   const container = scrollRef.value
   if (!el || !container) return
+
+  eagerUntil.value = Math.max(eagerUntil.value, index)
+  await waitForImages(index)
+  await nextTick()
+
   scrolling.value = true
-  container.scrollTo({ top: el.offsetTop, behavior: smooth ? 'smooth' : 'auto' })
   activePage.value = index
   emit('change', index)
   scrollThumbIntoView(index)
+  container.scrollTo({ top: el.offsetTop, behavior: smooth ? 'smooth' : 'auto' })
+
   setTimeout(() => {
     scrolling.value = false
-  }, smooth ? 400 : 0)
+  }, smooth ? 400 : 50)
 }
 
 const detectActivePage = () => {
@@ -179,7 +215,7 @@ const detectActivePage = () => {
 }
 
 const onScroll = () => {
-  if (scrolling.value) return
+  if (scrolling.value || initializing.value) return
   detectActivePage()
 }
 
@@ -207,7 +243,10 @@ watch(
 
 watch(
   () => props.total,
-  () => nextTick(syncThumbViewport),
+  () => {
+    pageRefs.value = []
+    nextTick(syncThumbViewport)
+  },
 )
 
 onMounted(async () => {
@@ -217,8 +256,11 @@ onMounted(async () => {
     resizeObserver = new ResizeObserver(syncThumbViewport)
     resizeObserver.observe(thumbRef.value)
   }
+  initializing.value = true
+  eagerUntil.value = props.page
   await nextTick()
-  scrollTo(props.page, false)
+  await scrollTo(props.page, false)
+  initializing.value = false
 })
 
 onUnmounted(() => resizeObserver?.disconnect())
@@ -271,11 +313,28 @@ onUnmounted(() => resizeObserver?.disconnect())
 }
 
 .thumbs {
-  width: 112px;
+  width: 0;
   flex-shrink: 0;
-  overflow-y: auto;
+  overflow: hidden;
   background: rgba(0, 0, 0, 0.45);
-  border-right: 1px solid rgba(255, 255, 255, 0.08);
+  border-right: 1px solid transparent;
+  transition: width 0.28s ease, border-color 0.28s ease;
+}
+
+.thumbs.visible {
+  width: 112px;
+  overflow-y: auto;
+  border-right-color: rgba(255, 255, 255, 0.08);
+}
+
+.thumbs-inner {
+  width: 112px;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+
+.thumbs.visible .thumbs-inner {
+  opacity: 1;
 }
 
 .thumbs-phantom {

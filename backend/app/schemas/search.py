@@ -2,17 +2,12 @@
 
 from pydantic import BaseModel
 
-
-class SearchResultItem(BaseModel):
-    id: int
-    name: str
-    path: str
-    node_type: str
-    image_count: int
+from app.schemas.node import NodeResponse
 
 
 class SearchResponse(BaseModel):
     q: str = ""
     tag_ids: list[int] = []
+    tag_mode: str = "or"
     total: int
-    items: list[SearchResultItem]
+    items: list[NodeResponse]

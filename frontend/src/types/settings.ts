@@ -9,6 +9,8 @@ export type Settings = {
   watch_debounce_seconds: number
   album_list_cache_ttl: number
   log_level: LogLevel
+  recent_view_limit: number
+  recent_added_limit: number
   host: string
   port: number
 }
@@ -16,7 +18,14 @@ export type Settings = {
 export type SettingsUpdate = Partial<
   Pick<
     Settings,
-    'gallery_root' | 'thumb_dir' | 'thumb_max_size' | 'watch_enabled' | 'watch_debounce_seconds' | 'log_level'
+    | 'gallery_root'
+    | 'thumb_dir'
+    | 'thumb_max_size'
+    | 'watch_enabled'
+    | 'watch_debounce_seconds'
+    | 'log_level'
+    | 'recent_view_limit'
+    | 'recent_added_limit'
   >
 >
 

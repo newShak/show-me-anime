@@ -51,6 +51,20 @@ class ReadProgress(Base):
     updated_at: Mapped[float] = mapped_column(Float, default=lambda: time.time())
 
 
+class RecentView(Base):
+    __tablename__ = "recent_views"
+
+    node_id: Mapped[int] = mapped_column(ForeignKey("nodes.id"), primary_key=True)
+    viewed_at: Mapped[float] = mapped_column(Float, default=lambda: time.time())
+
+
+class Favorite(Base):
+    __tablename__ = "favorites"
+
+    node_id: Mapped[int] = mapped_column(ForeignKey("nodes.id"), primary_key=True)
+    created_at: Mapped[float] = mapped_column(Float, default=lambda: time.time())
+
+
 class ScanJob(Base):
     __tablename__ = "scan_jobs"
 

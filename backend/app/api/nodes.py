@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 
 from app import constants
 from app.constants import ORDER_ASC, SORT_NAME
-from app.config import get_settings
+from app.config import Settings, get_settings
 from app.db.models import Node, ReadProgress
 from app.db.session import get_db
 from app.schemas.node import (
@@ -18,6 +18,8 @@ from app.schemas.node import (
     ImageListResponse,
     NodeBatchDelete,
     NodeBatchDeleteResponse,
+    NodeMove,
+    NodeMoveResponse,
     NodeResponse,
     NodeUpdate,
 )
@@ -26,6 +28,7 @@ from app.services.album_reader import AlbumReader, get_album_reader
 from app.services.media import ImageSource, resolve_cover_source, resolve_image_source
 from app.services.node_admin import sync_node_search_index
 from app.services.node_delete import delete_nodes
+from app.services.node_move import move_nodes
 from app.services.node_sort import SORT_FIELDS, SORT_ORDERS, sort_nodes
 from app.services.thumbnail import get_or_create_thumbnail, get_or_create_thumbnail_bytes
 
@@ -102,6 +105,41 @@ def list_nodes_progress(
     ]
 
 
+def _parse_node_ids(raw: str) -> list[int]:
+    return [int(part) for part in raw.split(",") if part.strip().isdigit()]
+
+
+@router.get("/nodes/recent", response_model=list[NodeResponse])
+def recent_nodes(
+    limit: int | None = Query(default=None, ge=1, le=100),
+    db: Session = Depends(get_db),
+    settings: Settings = Depends(get_settings),
+) -> list[Node]:
+    """按入库时间返回最近添加的相册（不含纯文件夹）。"""
+    cap = limit if limit is not None else settings.recent_added_limit
+    return (
+        db.query(Node)
+        .filter(Node.node_type != constants.CONTAINER)
+        .order_by(Node.created_at.desc())
+        .limit(cap)
+        .all()
+    )
+
+
+@router.get("/nodes/batch", response_model=list[NodeResponse])
+def batch_nodes(
+    ids: str = Query(..., description="逗号分隔的 node id，按传入顺序返回"),
+    db: Session = Depends(get_db),
+) -> list[Node]:
+    node_ids = _parse_node_ids(ids)
+    if not node_ids:
+        return []
+    nodes = db.query(Node).filter(Node.id.in_(node_ids)).all()
+    order = {node_id: idx for idx, node_id in enumerate(node_ids)}
+    nodes.sort(key=lambda n: order.get(n.id, len(node_ids)))
+    return nodes
+
+
 @router.get("/nodes/{node_id}", response_model=NodeResponse)
 def get_node(node_id: int, db: Session = Depends(get_db)) -> Node:
     node = db.get(Node, node_id)
@@ -157,6 +195,17 @@ def batch_delete_nodes(
     deleted, errors = delete_nodes(db, body.ids)
     reader.invalidate()
     return NodeBatchDeleteResponse(deleted=deleted, errors=errors)
+
+
+@router.post("/nodes/move", response_model=NodeMoveResponse)
+def batch_move_nodes(
+    body: NodeMove,
+    db: Session = Depends(get_db),
+    reader: AlbumReader = Depends(get_album_reader),
+) -> NodeMoveResponse:
+    moved, errors = move_nodes(db, body.ids, body.target_parent_id)
+    reader.invalidate()
+    return NodeMoveResponse(moved=moved, errors=errors)
 
 
 @router.get("/nodes/{node_id}/images", response_model=ImageListResponse)

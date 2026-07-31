@@ -45,6 +45,28 @@ def test_search_substring_chinese_and_digits(client, gallery):
     assert digits["items"][0]["name"] == "东京222"
 
 
+def test_search_by_tags_and(client, gallery):
+    _make_album(gallery, "album-a")
+    _make_album(gallery, "album-b")
+    _make_album(gallery, "album-c")
+    client.post("/api/scan/trigger")
+
+    t1 = client.post("/api/tags", json={"name": "科幻"}).json()["id"]
+    t2 = client.post("/api/tags", json={"name": "冒险"}).json()["id"]
+    nodes = {n["name"]: n["id"] for n in client.get("/api/nodes").json()}
+
+    client.put(f"/api/tags/nodes/{nodes['album-a']}", json={"tag_ids": [t1, t2]})
+    client.put(f"/api/tags/nodes/{nodes['album-b']}", json={"tag_ids": [t1]})
+    client.put(f"/api/tags/nodes/{nodes['album-c']}", json={"tag_ids": [t2]})
+
+    or_res = client.get("/api/search", params={"tags": f"{t1},{t2}", "tag_mode": "or"}).json()
+    assert {item["name"] for item in or_res["items"]} == {"album-a", "album-b", "album-c"}
+
+    and_res = client.get("/api/search", params={"tags": f"{t1},{t2}", "tag_mode": "and"}).json()
+    assert and_res["total"] == 1
+    assert and_res["items"][0]["name"] == "album-a"
+
+
 def test_search_by_tags_or(client, gallery):
     _make_album(gallery, "album-a")
     _make_album(gallery, "album-b")

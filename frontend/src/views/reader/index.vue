@@ -7,9 +7,11 @@
     :title="title"
     :mode="mode"
     :cache-version="cacheVersion"
+    :favorited="favorited"
     @close="onClose"
     @change="onPageChange"
     @mode-change="onModeChange"
+    @toggle-favorite="onToggleFavorite"
   />
   <ScrollViewer
     v-else-if="ready"
@@ -19,9 +21,11 @@
     :title="title"
     :mode="mode"
     :cache-version="cacheVersion"
+    :favorited="favorited"
     @close="onClose"
     @change="onPageChange"
     @mode-change="onModeChange"
+    @toggle-favorite="onToggleFavorite"
   />
 </template>
 
@@ -31,6 +35,8 @@ import { useRoute, useRouter } from 'vue-router'
 import ImageViewer from '@/components/ImageViewer.vue'
 import ScrollViewer from '@/components/ScrollViewer.vue'
 import { resolveReaderMode, saveReaderMode } from '@/composables/useReaderMode'
+import { fetchFavoriteIds, toggleFavorite } from '@/composables/useFavorites'
+import { touchRecentView } from '@/composables/useRecentView'
 import { fetchNode, fetchNodeImages, fetchProgress, saveProgress } from '@/api/nodes'
 import type { ReaderMode } from '@/types/reader'
 
@@ -43,18 +49,23 @@ const page = ref(0)
 const title = ref('')
 const ready = ref(false)
 const cacheVersion = ref(0)
+const favoriteIds = ref<number[]>([])
 const mode = ref<ReaderMode>(resolveReaderMode(route.query.mode as string | undefined))
+
+const favorited = computed(() => favoriteIds.value.includes(nodeId.value))
 
 let saveTimer: ReturnType<typeof setTimeout> | null = null
 
 const load = async () => {
   ready.value = false
   const id = nodeId.value
-  const [nodeRes, imagesRes, progressRes] = await Promise.all([
+  const [nodeRes, imagesRes, progressRes, favIdsRes] = await Promise.all([
     fetchNode(id),
     fetchNodeImages(id),
     fetchProgress(id),
+    fetchFavoriteIds(),
   ])
+  favoriteIds.value = favIdsRes.data
   title.value = nodeRes.data.name
   total.value = imagesRes.data.total
   cacheVersion.value = nodeRes.data.dir_mtime ?? Date.now()
@@ -65,6 +76,7 @@ const load = async () => {
   page.value = Math.min(Math.max(initial, 0), Math.max(total.value - 1, 0))
   mode.value = resolveReaderMode(route.query.mode as string | undefined)
   ready.value = true
+  touchRecentView(id)
 }
 
 const syncRoute = () => {
@@ -92,6 +104,13 @@ const onModeChange = (next: ReaderMode) => {
   mode.value = next
   saveReaderMode(next)
   syncRoute()
+}
+
+const onToggleFavorite = async () => {
+  const { data } = await toggleFavorite(nodeId.value)
+  favoriteIds.value = data.favorited
+    ? [...new Set([...favoriteIds.value, nodeId.value])]
+    : favoriteIds.value.filter((id) => id !== nodeId.value)
 }
 
 const onClose = () => {

@@ -33,4 +33,13 @@ const onClick = (data: NodeItem) => emit('select', data.id)
 .el-tree {
   background: transparent;
 }
+
+.el-tree :deep(.el-tree-node__children) {
+  overflow: hidden;
+}
+
+.el-tree :deep(.el-collapse-transition-enter-active),
+.el-tree :deep(.el-collapse-transition-leave-active) {
+  transition: height 0.28s ease, opacity 0.22s ease;
+}
 </style>

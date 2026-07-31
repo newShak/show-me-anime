@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 
 from app import constants
 from app.config import Settings, get_settings
-from app.db.models import Node, NodeTag, ReadProgress
+from app.db.models import Node, NodeTag, ReadProgress, RecentView, Favorite
 from app.services.search import remove_node_search
 
 logger = logging.getLogger(__name__)
@@ -49,6 +49,8 @@ def purge_nodes_index(db: Session, nodes: list[Node]) -> int:
     ids = [n.id for n in ordered]
     db.query(NodeTag).filter(NodeTag.node_id.in_(ids)).delete(synchronize_session=False)
     db.query(ReadProgress).filter(ReadProgress.node_id.in_(ids)).delete(synchronize_session=False)
+    db.query(RecentView).filter(RecentView.node_id.in_(ids)).delete(synchronize_session=False)
+    db.query(Favorite).filter(Favorite.node_id.in_(ids)).delete(synchronize_session=False)
     for node in ordered:
         remove_node_search(db, node.id)
         db.delete(node)

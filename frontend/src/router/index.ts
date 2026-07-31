@@ -1,9 +1,38 @@
 import { createRouter, createWebHistory } from 'vue-router'
+import { hasBrowseScroll } from '@/composables/useBrowseScroll'
+
+const browseNodeId = (params: Record<string, string | string[] | undefined>) => {
+  const raw = params.nodeId
+  if (raw == null || Array.isArray(raw)) return null
+  return Number(raw)
+}
 
 const router = createRouter({
   history: createWebHistory(),
+  scrollBehavior(to, _from, savedPosition) {
+    if (to.path.startsWith('/browse') && hasBrowseScroll(browseNodeId(to.params))) {
+      return false
+    }
+    if (savedPosition) return savedPosition
+    return { top: 0 }
+  },
   routes: [
     { path: '/', component: () => import('@/views/home/index.vue') },
+    {
+      path: '/recent-added',
+      component: () => import('@/views/home/section.vue'),
+      meta: { section: 'added' },
+    },
+    {
+      path: '/recent-viewed',
+      component: () => import('@/views/home/section.vue'),
+      meta: { section: 'viewed' },
+    },
+    {
+      path: '/favorites',
+      component: () => import('@/views/home/section.vue'),
+      meta: { section: 'favorites' },
+    },
     { path: '/browse', component: () => import('@/views/browse/index.vue') },
     { path: '/browse/:nodeId', component: () => import('@/views/browse/index.vue') },
     { path: '/reader/:nodeId', component: () => import('@/views/reader/index.vue') },

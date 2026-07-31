@@ -24,6 +24,30 @@
           alt=""
         />
         <div v-else class="cover placeholder">📁</div>
+        <button
+          v-if="showFavorite"
+          type="button"
+          class="fav-btn"
+          :class="{ active: isFavorite(node.id) }"
+          aria-label="收藏"
+          title="收藏"
+          @click.stop="emit('toggle-favorite', node)"
+        >
+          <svg class="fav-icon" viewBox="0 0 24 24" aria-hidden="true">
+            <path
+              v-if="isFavorite(node.id)"
+              fill="currentColor"
+              d="M12 17.27 18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z"
+            />
+            <path
+              v-else
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.6"
+              d="M12 17.27 18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z"
+            />
+          </svg>
+        </button>
       </div>
       <div class="meta">
         <div class="info">
@@ -34,21 +58,26 @@
           <el-tag v-for="tag in tagsOf(node.id)" :key="tag.id" size="small">{{ tag.name }}</el-tag>
         </div>
       </div>
-      <div class="card-menu" @click.stop>
-        <el-dropdown trigger="click" @command="(cmd: string) => onMenu(node, cmd)">
-          <button type="button" class="more-btn" aria-label="更多操作">
-            <el-icon><MoreFilled /></el-icon>
-          </button>
-          <template #dropdown>
-            <el-dropdown-menu>
-              <el-dropdown-item command="add-tags">标签</el-dropdown-item>
-              <el-dropdown-item divided command="delete">
-                <span class="danger">删除</span>
-              </el-dropdown-item>
-            </el-dropdown-menu>
-          </template>
-        </el-dropdown>
-      </div>
+      <el-dropdown
+        v-if="showMenu"
+        class="card-menu"
+        trigger="click"
+        @command="(cmd: string) => onMenu(node, cmd)"
+      >
+        <button type="button" class="more-btn" aria-label="更多操作" @click.stop>
+          <el-icon><MoreFilled /></el-icon>
+        </button>
+        <template #dropdown>
+          <el-dropdown-menu>
+            <el-dropdown-item command="edit">编辑</el-dropdown-item>
+            <el-dropdown-item command="add-tags">标签</el-dropdown-item>
+            <el-dropdown-item command="move">移动到…</el-dropdown-item>
+            <el-dropdown-item divided command="delete">
+              <span class="danger">删除</span>
+            </el-dropdown-item>
+          </el-dropdown-menu>
+        </template>
+      </el-dropdown>
     </article>
   </div>
   <el-empty v-else description="暂无内容，请先扫描或添加文件夹" class="empty" />
@@ -60,22 +89,32 @@ import type { NodeItem } from '@/types/node'
 import type { TagItem } from '@/types/tag'
 import { coverThumbUrl } from '@/api/nodes'
 
-const props = defineProps<{
-  nodes: NodeItem[]
-  selectable?: boolean
-  selectedIds?: number[]
-  nodeTags?: Record<number, TagItem[]>
-  progressMap?: Record<number, number>
-}>()
+const props = withDefaults(
+  defineProps<{
+    nodes: NodeItem[]
+    selectable?: boolean
+    selectedIds?: number[]
+    nodeTags?: Record<number, TagItem[]>
+    progressMap?: Record<number, number>
+    showMenu?: boolean
+    showFavorite?: boolean
+    favoriteIds?: number[]
+  }>(),
+  { showMenu: true, showFavorite: true },
+)
+
 const emit = defineEmits<{
   open: [node: NodeItem]
   toggle: [id: number]
+  edit: [node: NodeItem]
   'add-tags': [node: NodeItem]
+  move: [node: NodeItem]
   delete: [node: NodeItem]
+  'toggle-favorite': [node: NodeItem]
 }>()
 
 const isSelected = (id: number) => props.selectedIds?.includes(id) ?? false
-
+const isFavorite = (id: number) => props.favoriteIds?.includes(id) ?? false
 const tagsOf = (nodeId: number) => props.nodeTags?.[nodeId] ?? []
 
 const progressText = (node: NodeItem) => {
@@ -86,7 +125,9 @@ const progressText = (node: NodeItem) => {
 
 const onMenu = (node: NodeItem, cmd: string) => {
   if (cmd === 'delete') emit('delete', node)
+  else if (cmd === 'edit') emit('edit', node)
   else if (cmd === 'add-tags') emit('add-tags', node)
+  else if (cmd === 'move') emit('move', node)
 }
 
 const onCardClick = (node: NodeItem) => {
@@ -96,12 +137,8 @@ const onCardClick = (node: NodeItem) => {
 
 const subText = (node: NodeItem) => {
   const parts: string[] = []
-  if (node.node_type !== 'container' && node.image_count > 0) {
-    parts.push(`${node.image_count} 张`)
-  }
-  if (node.subdir_count > 0) {
-    parts.push(`${node.subdir_count} 个文件夹`)
-  }
+  if (node.node_type !== 'container' && node.image_count > 0) parts.push(`${node.image_count} 张`)
+  if (node.subdir_count > 0) parts.push(`${node.subdir_count} 个文件夹`)
   if (parts.length) return parts.join(' · ')
   if (node.node_type === 'container') return '空文件夹'
   return '空相册'
@@ -140,7 +177,7 @@ const subText = (node: NodeItem) => {
   position: absolute;
   top: 10px;
   left: 10px;
-  z-index: 1;
+  z-index: 5;
 }
 
 .cover-wrap {
@@ -149,11 +186,46 @@ const subText = (node: NodeItem) => {
   background: var(--app-cover-bg);
 }
 
+.fav-btn {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: rgb(255 255 255 / 92%);
+  cursor: pointer;
+  filter: drop-shadow(0 1px 3px rgb(0 0 0 / 55%));
+  transition: transform 0.15s ease, color 0.15s ease;
+}
+
+.fav-btn:hover {
+  transform: scale(1.1);
+  color: #ffd04b;
+}
+
+.fav-btn.active {
+  color: #ffc107;
+}
+
+.fav-icon {
+  width: 22px;
+  height: 22px;
+  display: block;
+  pointer-events: none;
+}
+
 .progress-badge {
   position: absolute;
   top: 8px;
-  right: 8px;
-  z-index: 2;
+  left: 8px;
+  z-index: 4;
   padding: 2px 8px;
   border-radius: 999px;
   font-size: 12px;
@@ -186,7 +258,7 @@ const subText = (node: NodeItem) => {
 }
 
 .meta {
-  padding: 12px;
+  padding: 12px 44px 12px 12px;
   min-height: 56px;
 }
 
@@ -213,40 +285,34 @@ const subText = (node: NodeItem) => {
   flex-wrap: wrap;
   gap: 4px;
   margin-top: 8px;
-  padding-right: 28px;
 }
 
 .card-menu {
   position: absolute;
   right: 8px;
   bottom: 8px;
-  z-index: 3;
+  z-index: 5;
 }
 
-.card-menu :deep(.el-dropdown) {
-  display: block;
-}
-
-.more-btn {
+.card-menu :deep(.more-btn) {
   display: flex;
   align-items: center;
   justify-content: center;
   width: 28px;
   height: 28px;
   padding: 0;
+  margin: 0;
   border: none;
-  border-radius: 6px;
-  background: color-mix(in srgb, var(--app-text) 12%, var(--app-surface));
-  color: var(--app-text-secondary);
-  font-size: 16px;
+  background: transparent;
+  color: var(--app-text-muted);
+  font-size: 18px;
   line-height: 1;
   cursor: pointer;
-  box-shadow: var(--app-card-shadow);
+  transition: color 0.15s ease;
 }
 
-.more-btn:hover {
+.card-menu :deep(.more-btn:hover) {
   color: var(--app-text);
-  background: var(--app-surface);
 }
 
 .danger {
