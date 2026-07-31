@@ -4,6 +4,10 @@ from dataclasses import dataclass, field
 from typing import Literal
 
 
+class DownloadCancelled(Exception):
+    """用户主动取消下载。"""
+
+
 @dataclass
 class RemoteAlbum:
     source: str

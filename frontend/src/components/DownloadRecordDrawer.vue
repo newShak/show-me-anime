@@ -20,12 +20,14 @@
       :status-filter="records.statusFilter.value"
       :retrying-id="records.retryingId.value"
       :overwriting-id="records.overwritingId.value"
+      :cancelling-id="records.cancellingId.value"
       :deleting-id="records.deletingId.value"
       @page-change="records.onPageChange"
       @page-size-change="records.onPageSizeChange"
       @status-change="records.onStatusChange"
       @retry="records.onRetry"
       @overwrite="records.onOverwrite"
+      @cancel="records.onCancel"
       @delete="records.onDelete"
     />
   </el-drawer>
@@ -53,12 +55,14 @@
       :status-filter="records.statusFilter.value"
       :retrying-id="records.retryingId.value"
       :overwriting-id="records.overwritingId.value"
+      :cancelling-id="records.cancellingId.value"
       :deleting-id="records.deletingId.value"
       @page-change="records.onPageChange"
       @page-size-change="records.onPageSizeChange"
       @status-change="records.onStatusChange"
       @retry="records.onRetry"
       @overwrite="records.onOverwrite"
+      @cancel="records.onCancel"
       @delete="records.onDelete"
     />
   </el-dialog>

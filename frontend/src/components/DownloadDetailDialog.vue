@@ -195,7 +195,7 @@ const onDownload = async () => {
       target_rel_path: targetPath.value,
     })
     job.value = data
-    if (data.target_existed) ElMessage.warning('目标路径已存在，将跳过已有文件')
+    if (data.target_existed) ElMessage.warning('目标路径已存在，将跳过下载')
     await pollJob(data.id)
   } catch (e) {
     ElMessage.error(apiErrorMessage(e, '创建下载任务失败'))

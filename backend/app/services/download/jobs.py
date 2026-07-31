@@ -20,7 +20,7 @@ from app.services.download.cache import (
 )
 from app.services.download.records import create_record, get_record, record_to_job, update_record
 from app.services.download.registry import get_adapter
-from app.services.download.types import DownloadJobState
+from app.services.download.types import DownloadCancelled, DownloadJobState
 from app.services.download.wnacg import _slug
 from app.services.scan_runner import run_scan
 
@@ -29,6 +29,7 @@ logger = logging.getLogger(__name__)
 _jobs: dict[str, DownloadJobState] = {}
 _running_ids: set[str] = set()
 _force_overwrite: set[str] = set()
+_cancel_ids: set[str] = set()
 _lock = threading.Lock()
 _run_sem: threading.Semaphore | None = None
 _run_sem_size = 0
@@ -85,6 +86,27 @@ def target_path_exists(settings: Settings, target_rel_path: str) -> bool:
     return any(not item.name.startswith(".") for item in dest.iterdir())
 
 
+def count_dest_files(dest_dir: Path) -> int:
+    if not dest_dir.is_dir():
+        return 0
+    return sum(1 for item in dest_dir.iterdir() if item.is_file() and not item.name.startswith("."))
+
+
+def _is_cancelled(job_id: str) -> bool:
+    with _lock:
+        return job_id in _cancel_ids
+
+
+def _check_cancel(job_id: str) -> None:
+    if _is_cancelled(job_id):
+        raise DownloadCancelled()
+
+
+def _clear_cancel(job_id: str) -> None:
+    with _lock:
+        _cancel_ids.discard(job_id)
+
+
 def _finish_message(saved: int, skipped: int) -> str:
     if saved and skipped:
         return f"已保存 {saved} 个文件，跳过 {skipped} 个已存在"
@@ -113,7 +135,7 @@ def create_download_job(
         target_rel_path=rel,
         status="pending",
         target_existed=existed,
-        message="目标路径已存在，将跳过已有文件" if existed else None,
+        message="目标路径已存在，将跳过下载" if existed else None,
     )
     with _lock:
         _jobs[job.id] = job
@@ -232,8 +254,25 @@ def retry_download_job(job_id: str) -> DownloadJobState:
     with _lock:
         _jobs[job_id] = job
         _force_overwrite.discard(job_id)
+        _cancel_ids.discard(job_id)
     _update(job_id, status="pending", progress=0, message=message, saved_files=0, skipped_files=0)
     threading.Thread(target=_run_job, args=(job_id,), daemon=True).start()
+    return get_job(job_id) or job
+
+
+def cancel_download_job(job_id: str) -> DownloadJobState:
+    """中断等待中或进行中的下载任务。"""
+    job = get_job(job_id)
+    if job is None:
+        raise ValueError("job not found")
+    if job.status not in {"pending", "running"}:
+        raise ValueError("job cannot be cancelled")
+    with _lock:
+        _cancel_ids.add(job_id)
+    if job.status == "pending":
+        _update(job_id, status="failed", progress=0, message="已取消")
+    else:
+        _update(job_id, message="正在取消…")
     return get_job(job_id) or job
 
 
@@ -254,6 +293,7 @@ def overwrite_download_job(job_id: str) -> DownloadJobState:
     with _lock:
         _jobs[job_id] = job
         _force_overwrite.add(job_id)
+        _cancel_ids.discard(job_id)
     _update(
         job_id,
         status="pending",
@@ -286,6 +326,7 @@ def delete_download_record(job_id: str) -> None:
         _jobs.pop(job_id, None)
         _running_ids.discard(job_id)
         _force_overwrite.discard(job_id)
+        _cancel_ids.discard(job_id)
 
     from app.services.download.records import delete_record
 
@@ -311,6 +352,7 @@ def _run_job(job_id: str) -> None:
         _running_ids.add(job_id)
     try:
         sem.acquire()
+        _check_cancel(job_id)
         job = get_job(job_id)
         if job is None:
             return
@@ -320,18 +362,29 @@ def _run_job(job_id: str) -> None:
         overwrite = _take_force_overwrite(job_id)
         dest_dir = _dest_dir(settings, job.target_rel_path)
         existed = job.target_existed or target_path_exists(settings, job.target_rel_path)
-        start_msg = "准备下载"
         if existed and not overwrite:
-            start_msg = "目标路径已存在，跳过已有文件"
-        _update(
-            job_id,
-            status="running",
-            progress=5,
-            message=start_msg,
-            target_existed=existed,
-        )
+            skipped = count_dest_files(dest_dir)
+            _update(
+                job_id,
+                status="done",
+                progress=100,
+                message="目标路径已存在，已跳过",
+                saved_files=0,
+                skipped_files=skipped,
+                target_existed=True,
+            )
+            logger.info(
+                "download job_id=%s skipped existing path=%s files=%s",
+                job_id,
+                job.target_rel_path,
+                skipped,
+            )
+            return
+        _update(job_id, status="running", progress=5, message="准备下载", target_existed=existed)
+        _check_cancel(job_id)
         adapter = get_adapter(job.source, settings)
         target = adapter.resolve_download(job.album_id)
+        _check_cancel(job_id)
         cache_dir = job_cache_dir(settings, job_id)
         pre_skipped = 0
 
@@ -342,7 +395,7 @@ def _run_job(job_id: str) -> None:
                 target.urls, cache_dir, dest_dir, job_id, len(target.urls), target.referer, overwrite
             )
         else:
-            _write_archive(target, cache_dir, job_id, overwrite)
+            _write_archive(target, cache_dir, job_id, overwrite, lambda: _check_cancel(job_id))
 
         move = move_cache_files_to_dest(cache_dir, dest_dir, overwrite=overwrite)
         cleanup_job_cache(cache_dir)
@@ -370,6 +423,11 @@ def _run_job(job_id: str) -> None:
             saved,
             skipped,
         )
+    except DownloadCancelled:
+        settings = get_settings()
+        cleanup_job_cache(job_cache_dir(settings, job_id))
+        _update(job_id, status="failed", progress=0, message="已取消")
+        logger.info("download job_id=%s cancelled", job_id)
     except Exception as exc:
         logger.exception("download job_id=%s failed: %s", job_id, exc)
         _update(job_id, status="failed", message=str(exc))
@@ -377,6 +435,7 @@ def _run_job(job_id: str) -> None:
         with _lock:
             _running_ids.discard(job_id)
             _force_overwrite.discard(job_id)
+            _cancel_ids.discard(job_id)
         sem.release()
 
 
@@ -417,6 +476,7 @@ def _write_images(
     fetched = skipped = 0
     with download_client(settings) as client:
         for idx, url in enumerate(urls, start=1):
+            _check_cancel(job_id)
             ext = _guess_ext(url, None)
             name = f"{idx:03d}{ext}"
             if not overwrite and (dest_dir / name).is_file():
@@ -434,7 +494,13 @@ def _write_images(
     return skipped
 
 
-def _write_archive(target, cache_dir: Path, job_id: str, overwrite: bool) -> None:
+def _write_archive(
+    target,
+    cache_dir: Path,
+    job_id: str,
+    overwrite: bool,
+    should_cancel,
+) -> None:
     from app.services.download.http_client import download_client
     from app.services.download.transfer import (
         ZIP_NAME,
@@ -461,6 +527,7 @@ def _write_archive(target, cache_dir: Path, job_id: str, overwrite: bool) -> Non
     _update(job_id, progress=15, message=f"续传下载 ({partial // 1024}KB)" if partial else "下载压缩包")
 
     def on_progress(done: int, total: int | None) -> None:
+        should_cancel()
         if total and total > 0:
             pct = 15 + int(55 * done / total)
             msg = f"续传 {done // 1024}KB/{total // 1024}KB" if partial else "下载压缩包"
@@ -475,6 +542,7 @@ def _write_archive(target, cache_dir: Path, job_id: str, overwrite: bool) -> Non
             target.file_key,
             on_progress,
             settings.download_speed_limit_kbps,
+            should_cancel=should_cancel,
         )
 
     _update(job_id, progress=75, message="解压中")

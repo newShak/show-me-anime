@@ -26,6 +26,7 @@ from app.schemas.download import (
 from app.services.download.cache import clear_download_cache
 from app.services.download.http_client import probe_proxy
 from app.services.download.jobs import (
+    cancel_download_job,
     create_download_job,
     create_download_jobs_batch,
     default_target_rel_path,
@@ -337,6 +338,15 @@ def resume_download_job_api(job_id: str) -> DownloadJobResponse:
 def retry_download_job_api(job_id: str) -> DownloadJobResponse:
     try:
         job = retry_download_job(job_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return _job_response(job)
+
+
+@router.post("/jobs/{job_id}/cancel", response_model=DownloadJobResponse)
+def cancel_download_job_api(job_id: str) -> DownloadJobResponse:
+    try:
+        job = cancel_download_job(job_id)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return _job_response(job)

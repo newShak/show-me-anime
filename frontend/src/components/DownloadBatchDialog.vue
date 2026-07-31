@@ -121,7 +121,7 @@ const onSubmit = async () => {
     })
     jobs.value = data.jobs
     if (data.jobs.some((j) => j.target_existed)) {
-      ElMessage.warning('部分目标路径已存在，将跳过已有文件')
+      ElMessage.warning('部分目标路径已存在，将跳过下载')
     }
     await pollJobs()
   } catch (e) {

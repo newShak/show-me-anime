@@ -145,7 +145,7 @@ def test_download_job_skips_existing_path(client, gallery):
     assert job["status"] == "done"
     assert job["skipped_files"] == 3
     assert job["saved_files"] == 0
-    assert "跳过" in (job["message"] or "")
+    assert "已跳过" in (job["message"] or "")
 
 
 def test_download_jobs_batch(client):
@@ -322,3 +322,33 @@ def test_download_records_filter_and_delete(client):
     finally:
         with jobs_mod._lock:
             jobs_mod._running_ids.discard("filter-run")
+
+
+def test_cancel_pending_download_job(client):
+    from app.db.session import SessionLocal, get_engine
+    from app.services.download import jobs as jobs_mod
+    from app.services.download.records import create_record
+    from app.services.download.types import DownloadJobState
+
+    job = DownloadJobState(
+        id="cancel-pending",
+        source="wnacg",
+        album_id="album-cancel",
+        title="取消测试",
+        target_rel_path="mock-import/cancel-test",
+        status="pending",
+        message="等待中",
+    )
+    db = SessionLocal(bind=get_engine())
+    try:
+        create_record(db, job)
+    finally:
+        db.close()
+    with jobs_mod._lock:
+        jobs_mod._jobs[job.id] = job
+
+    res = client.post("/api/download/jobs/cancel-pending/cancel")
+    assert res.status_code == 200
+    body = res.json()
+    assert body["status"] == "failed"
+    assert body["message"] == "已取消"

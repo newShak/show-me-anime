@@ -42,8 +42,18 @@
       <el-table-column label="时间" :width="isFullscreen ? 168 : 140">
         <template #default="{ row }">{{ formatTime(row.created_at) }}</template>
       </el-table-column>
-      <el-table-column label="操作" :width="isFullscreen ? 168 : 148" align="center" fixed="right">
+      <el-table-column label="操作" :width="isFullscreen ? 200 : 180" align="center" fixed="right">
         <template #default="{ row }">
+          <el-button
+            v-if="isActive(row)"
+            type="warning"
+            link
+            size="small"
+            :loading="cancellingId === row.id"
+            @click="emit('cancel', row)"
+          >
+            中断
+          </el-button>
           <el-button
             v-if="row.status === 'failed'"
             type="primary"
@@ -104,6 +114,7 @@ defineProps<{
   statusFilter: DownloadRecordStatusFilter
   retryingId: string | null
   overwritingId: string | null
+  cancellingId: string | null
   deletingId: string | null
   isFullscreen?: boolean
 }>()
@@ -114,6 +125,7 @@ const emit = defineEmits<{
   'status-change': [status: DownloadRecordStatusFilter]
   retry: [row: DownloadRecord]
   overwrite: [row: DownloadRecord]
+  cancel: [row: DownloadRecord]
   delete: [row: DownloadRecord]
 }>()
 

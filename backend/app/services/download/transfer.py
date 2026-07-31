@@ -14,6 +14,7 @@ import httpx
 
 from app.config import get_settings
 from app.services.download.http_client import _download_proxy
+from app.services.download.types import DownloadCancelled
 
 logger = logging.getLogger(__name__)
 
@@ -125,21 +126,26 @@ def download_file_resumable(
     file_key: str | None,
     on_progress: Callable[[int, int | None], None] | None = None,
     speed_limit_kbps: int = 0,
+    should_cancel: Callable[[], None] | None = None,
 ) -> int:
     """下载到 dest，支持断点续传。CDN 限并发 + 错开启动 + 503 重试。"""
     last_err: Exception | None = None
     for attempt in range(_MAX_RETRIES):
         try:
+            if should_cancel:
+                should_cancel()
             if attempt == 0:
                 time.sleep(random.uniform(0.3, 2.0))
             with _cdn_semaphore():
                 if _needs_browser_cdn(url):
                     return _browser_download_resumable_once(
-                        url, referer, dest, file_key, on_progress, speed_limit_kbps
+                        url, referer, dest, file_key, on_progress, speed_limit_kbps, should_cancel
                     )
                 return _download_file_resumable_once(
-                    client, url, referer, dest, file_key, on_progress, speed_limit_kbps
+                    client, url, referer, dest, file_key, on_progress, speed_limit_kbps, should_cancel
                 )
+        except DownloadCancelled:
+            raise
         except httpx.HTTPStatusError as exc:
             last_err = exc
             code = exc.response.status_code
@@ -161,6 +167,8 @@ def download_file_resumable(
                 raise
             logger.warning("cdn download transport error attempt %s/%s: %s", attempt + 1, _MAX_RETRIES, exc)
         except Exception as exc:
+            if isinstance(exc, DownloadCancelled):
+                raise
             resp = getattr(exc, "response", None)
             code = getattr(resp, "status_code", None)
             if code in _RETRYABLE_STATUS and attempt < _MAX_RETRIES - 1:
@@ -192,6 +200,7 @@ def _download_file_resumable_once(
     file_key: str | None,
     on_progress: Callable[[int, int | None], None] | None = None,
     speed_limit_kbps: int = 0,
+    should_cancel: Callable[[], None] | None = None,
 ) -> int:
     """单次 CDN 下载（无重试）。"""
     limiter = SpeedLimiter(speed_limit_kbps)
@@ -212,7 +221,7 @@ def _download_file_resumable_once(
         if partial > 0 and res.status_code in {416, 404}:
             reset_partial_download(dest.parent)
             return _download_file_resumable_once(
-                client, url, referer, dest, file_key, on_progress, speed_limit_kbps
+                client, url, referer, dest, file_key, on_progress, speed_limit_kbps, should_cancel
             )
 
         if partial > 0 and res.status_code == 200:
@@ -235,6 +244,8 @@ def _download_file_resumable_once(
 
         with dest.open(mode) as f:
             for chunk in res.iter_bytes(chunk_size=_CHUNK):
+                if should_cancel:
+                    should_cancel()
                 limiter.wait(len(chunk))
                 f.write(chunk)
                 done += len(chunk)
@@ -266,6 +277,7 @@ def _browser_download_resumable_once(
     file_key: str | None,
     on_progress: Callable[[int, int | None], None] | None = None,
     speed_limit_kbps: int = 0,
+    should_cancel: Callable[[], None] | None = None,
 ) -> int:
     """wcdn.date 签名链使用 Chrome 指纹下载，绕过 Cloudflare。"""
     from curl_cffi import requests as cf_requests
@@ -297,7 +309,9 @@ def _browser_download_resumable_once(
 
     if partial > 0 and res.status_code in {416, 404}:
         reset_partial_download(dest.parent)
-        return _browser_download_resumable_once(url, referer, dest, file_key, on_progress, speed_limit_kbps)
+        return _browser_download_resumable_once(
+            url, referer, dest, file_key, on_progress, speed_limit_kbps, should_cancel
+        )
 
     if partial > 0 and res.status_code == 200:
         logger.info("server ignored Range, restart download")
@@ -322,6 +336,8 @@ def _browser_download_resumable_once(
         for chunk in res.iter_content(chunk_size=_CHUNK):
             if not chunk:
                 continue
+            if should_cancel:
+                should_cancel()
             limiter.wait(len(chunk))
             f.write(chunk)
             done += len(chunk)

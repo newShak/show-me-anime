@@ -1,6 +1,7 @@
 import { onUnmounted, ref, watch, type Ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
+  cancelDownloadJob,
   deleteDownloadRecord,
   fetchDownloadRecords,
   overwriteDownloadJob,
@@ -20,6 +21,7 @@ export const useDownloadRecords = (active: Ref<boolean>) => {
   const statusFilter = ref<DownloadRecordStatusFilter>('')
   const retryingId = ref<string | null>(null)
   const overwritingId = ref<string | null>(null)
+  const cancellingId = ref<string | null>(null)
   const deletingId = ref<string | null>(null)
 
   let pollTimer: ReturnType<typeof setInterval> | null = null
@@ -112,6 +114,28 @@ export const useDownloadRecords = (active: Ref<boolean>) => {
     }
   }
 
+  const onCancel = async (row: DownloadRecord) => {
+    try {
+      await ElMessageBox.confirm(`确定中断「${row.title}」的下载？`, '中断下载', {
+        type: 'warning',
+        confirmButtonText: '中断',
+        cancelButtonText: '取消',
+      })
+    } catch {
+      return
+    }
+    cancellingId.value = row.id
+    try {
+      await cancelDownloadJob(row.id)
+      ElMessage.success('已中断')
+      await refresh(false)
+    } catch (err) {
+      ElMessage.error(apiErrorMessage(err, '中断失败'))
+    } finally {
+      cancellingId.value = null
+    }
+  }
+
   const onDelete = async (row: DownloadRecord) => {
     try {
       await ElMessageBox.confirm(`确定删除「${row.title}」的下载记录？`, '删除记录', {
@@ -151,6 +175,7 @@ export const useDownloadRecords = (active: Ref<boolean>) => {
     statusFilter,
     retryingId,
     overwritingId,
+    cancellingId,
     deletingId,
     refresh,
     reset,
@@ -159,6 +184,7 @@ export const useDownloadRecords = (active: Ref<boolean>) => {
     onStatusChange,
     onRetry,
     onOverwrite,
+    onCancel,
     onDelete,
   }
 }
