@@ -217,7 +217,16 @@ import NodeTree from '@/components/NodeTree.vue'
 import NodeEditDialog from '@/components/NodeEditDialog.vue'
 import NodeMoveDialog from '@/components/NodeMoveDialog.vue'
 import TagPickerDialog from '@/components/TagPickerDialog.vue'
-import { fetchNode, fetchNodeImages, fetchNodes, fetchNodesProgress, fetchProgress, deleteNodes, moveNodes } from '@/api/nodes'
+import {
+  fetchNode,
+  fetchNodeAncestors,
+  fetchNodeImages,
+  fetchNodes,
+  fetchNodesProgress,
+  fetchProgress,
+  deleteNodes,
+  moveNodes,
+} from '@/api/nodes'
 import { batchAddNodeTags, fetchNodesTags, fetchTags, removeNodeTag } from '@/api/tags'
 import {
   getStoredSort,
@@ -594,20 +603,19 @@ const onBatchDelete = async () => {
   }
 }
 
-const loadCrumbs = async (id: number | null) => {
+const loadCrumbs = async (node: NodeItem | null) => {
   const chain: Crumb[] = [{ id: null, name: '画廊' }]
-  if (id == null) {
+  if (node == null) {
     crumbs.value = chain
     return
   }
-  let cur = await fetchNode(id).then((r) => r.data)
-  const stack: Crumb[] = []
-  while (cur) {
-    stack.unshift({ id: cur.id, name: cur.name })
-    if (cur.parent_id == null) break
-    cur = (await fetchNode(cur.parent_id)).data
-  }
-  crumbs.value = [...chain, ...stack]
+  const ancestors =
+    node.parent_id == null ? [] : (await fetchNodeAncestors(node.id)).data
+  crumbs.value = [
+    ...chain,
+    ...ancestors.map((a) => ({ id: a.id, name: a.name })),
+    { id: node.id, name: node.name },
+  ]
 }
 
 const applyBrowseScroll = async () => {
@@ -630,25 +638,25 @@ const loadView = async (id: number | null) => {
     return
   }
 
-  const node = (await fetchNode(id)).data
+  const [nodeRes, childrenRes] = await Promise.all([fetchNode(id), fetchNodes(id, sort)])
+  const node = nodeRes.data
   currentNode.value = node
-  await loadCrumbs(id)
 
   if (node.node_type === 'container') {
-    nodes.value = (await fetchNodes(id, sort)).data
+    nodes.value = childrenRes.data
     images.value = []
-    await Promise.all([refreshTags(), loadProgress()])
+    await Promise.all([loadCrumbs(node), refreshTags(), loadProgress()])
     return
   }
 
-  images.value = (await fetchNodeImages(id)).data.items
-  nodes.value = node.node_type === 'both' ? (await fetchNodes(id, sort)).data : []
+  const [imagesRes] = await Promise.all([fetchNodeImages(id), loadCrumbs(node)])
+  images.value = imagesRes.data.items
+  nodes.value = node.node_type === 'both' ? childrenRes.data : []
   await Promise.all([refreshTags(), loadProgress()])
 }
 
 const goTo = (id: number | null) => {
   clearSelection()
-  if (id != null) touchRecentView(id)
   router.push(id == null ? '/browse' : `/browse/${id}`)
 }
 
@@ -657,7 +665,6 @@ const onTreeSelect = (id: number | null) => {
 }
 
 const onOpenNode = (node: NodeItem) => {
-  touchRecentView(node.id)
   goTo(node.id)
 }
 
@@ -708,15 +715,11 @@ const startRead = async () => {
   }
 }
 
-watch(nodeId, async (id) => {
+watch(nodeId, async (id, prev) => {
+  if (id != null && id !== prev) touchRecentView(id)
   await loadView(id)
   await applyBrowseScroll()
 }, { immediate: true })
-
-watch(
-  () => nodes.value.map((n) => n.id).join(','),
-  () => refreshTags(),
-)
 
 onMounted(async () => {
   const [tagsRes, favIdsRes] = await Promise.all([fetchTags(), fetchFavoriteIds()])

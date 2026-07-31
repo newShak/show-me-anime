@@ -31,6 +31,8 @@ export const fetchNodesBatch = (ids: number[]) =>
 
 export const fetchNode = (id: number) => http.get<NodeItem>(`/nodes/${id}`)
 
+export const fetchNodeAncestors = (id: number) => http.get<NodeItem[]>(`/nodes/${id}/ancestors`)
+
 export const patchNode = (id: number, body: NodeUpdate) => http.patch<NodeItem>(`/nodes/${id}`, body)
 
 export const fetchNodeImages = (id: number) => http.get<ImageList>(`/nodes/${id}/images`)

@@ -160,6 +160,22 @@ def batch_nodes(
     return nodes
 
 
+@router.get("/nodes/{node_id}/ancestors", response_model=list[NodeResponse])
+def node_ancestors(node_id: int, db: Session = Depends(get_db)) -> list[Node]:
+    node = db.get(Node, node_id)
+    if node is None:
+        raise HTTPException(status_code=404, detail="node not found")
+    chain: list[Node] = []
+    cur = node
+    while cur.parent_id is not None:
+        parent = db.get(Node, cur.parent_id)
+        if parent is None:
+            break
+        chain.insert(0, parent)
+        cur = parent
+    return chain
+
+
 @router.get("/nodes/{node_id}", response_model=NodeResponse)
 def get_node(node_id: int, db: Session = Depends(get_db)) -> Node:
     node = db.get(Node, node_id)

@@ -10,6 +10,7 @@
           {{ opt.label }}
         </el-radio-button>
       </el-radio-group>
+      <span v-if="pageTotalBytes > 0" class="size-summary">本页合计 {{ formatBytes(pageTotalBytes) }}</span>
     </div>
     <el-table v-loading="loading" :data="items" :size="isFullscreen ? 'default' : 'small'" stripe empty-text="暂无记录">
       <el-table-column label="标题" :min-width="isFullscreen ? 200 : 120" show-overflow-tooltip>
@@ -38,6 +39,9 @@
       </el-table-column>
       <el-table-column label="路径" :min-width="isFullscreen ? 180 : 100" show-overflow-tooltip>
         <template #default="{ row }">{{ row.target_rel_path }}</template>
+      </el-table-column>
+      <el-table-column label="大小" :width="isFullscreen ? 88 : 72" align="right">
+        <template #default="{ row }">{{ formatBytes(row.size_bytes) }}</template>
       </el-table-column>
       <el-table-column label="时间" :width="isFullscreen ? 168 : 140">
         <template #default="{ row }">{{ formatTime(row.created_at) }}</template>
@@ -104,11 +108,13 @@
 <script setup lang="ts">
 import type { DownloadRecordStatusFilter } from '@/composables/useDownloadRecords'
 import type { DownloadRecord } from '@/types/download'
+import { formatBytes } from '@/utils/formatBytes'
 
 defineProps<{
   loading: boolean
   items: DownloadRecord[]
   total: number
+  pageTotalBytes: number
   page: number
   pageSize: number
   statusFilter: DownloadRecordStatusFilter
@@ -168,8 +174,18 @@ const formatTime = (ts: number) => new Date(ts * 1000).toLocaleString()
 
 <style scoped>
 .toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
   margin-bottom: 12px;
   overflow-x: auto;
+}
+
+.size-summary {
+  flex-shrink: 0;
+  font-size: 12px;
+  color: var(--app-text-muted);
 }
 
 .msg {

@@ -109,6 +109,7 @@ export type DownloadRecord = {
   saved_files: number
   skipped_files: number
   target_existed: boolean
+  size_bytes: number
   created_at: number
   finished_at: number | null
   resumable: boolean
@@ -120,6 +121,7 @@ export type DownloadRecordList = {
   total: number
   page: number
   page_size: number
+  page_total_bytes: number
 }
 
 export type DownloadCacheClearResult = {

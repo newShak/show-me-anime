@@ -130,6 +130,7 @@ class DownloadRecordResponse(BaseModel):
     saved_files: int = 0
     skipped_files: int = 0
     target_existed: bool = False
+    size_bytes: int = 0
     created_at: float
     finished_at: float | None = None
     resumable: bool = False
@@ -141,3 +142,4 @@ class DownloadRecordListResponse(BaseModel):
     total: int
     page: int
     page_size: int
+    page_total_bytes: int = 0

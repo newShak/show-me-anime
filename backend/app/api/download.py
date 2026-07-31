@@ -41,6 +41,7 @@ from app.services.download.jobs import (
 )
 from app.services.download.records import list_records
 from app.services.download.registry import get_adapter, list_sources
+from app.services.download.size import record_size_bytes
 from app.services.download.transfer import is_job_resumable
 from sqlalchemy.orm import Session
 
@@ -111,8 +112,12 @@ def download_records(
         raise HTTPException(status_code=400, detail="invalid status")
     reconcile_stale_download_jobs(db)
     rows, total = list_records(db, page, page_size, status)
-    return DownloadRecordListResponse(
-        items=[
+    items: list[DownloadRecordResponse] = []
+    page_total_bytes = 0
+    for r in rows:
+        size_bytes = record_size_bytes(settings, r)
+        page_total_bytes += size_bytes
+        items.append(
             DownloadRecordResponse(
                 id=r.id,
                 source=r.source,
@@ -125,6 +130,7 @@ def download_records(
                 saved_files=r.saved_files,
                 skipped_files=r.skipped_files,
                 target_existed=r.target_existed,
+                size_bytes=size_bytes,
                 created_at=r.created_at,
                 finished_at=r.finished_at,
                 resumable=r.status == "failed"
@@ -134,11 +140,13 @@ def download_records(
                 and not is_download_job_running(r.id)
                 and (r.target_existed or r.skipped_files > 0),
             )
-            for r in rows
-        ],
+        )
+    return DownloadRecordListResponse(
+        items=items,
         total=total,
         page=page,
         page_size=page_size,
+        page_total_bytes=page_total_bytes,
     )
 
 

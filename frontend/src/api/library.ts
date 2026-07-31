@@ -7,8 +7,16 @@ export type FavoritesPage = { total: number; items: NodeItem[] }
 export const fetchRecentViewed = (limit?: number) =>
   http.get<NodeItem[]>('/library/recent', { params: limit != null ? { limit } : {} })
 
-export const touchRecentView = (nodeId: number) =>
+const recentTouchAt = new Map<number, number>()
+const RECENT_TOUCH_MS = 3000
+
+export const touchRecentView = (nodeId: number) => {
+  const now = Date.now()
+  const last = recentTouchAt.get(nodeId)
+  if (last != null && now - last < RECENT_TOUCH_MS) return
+  recentTouchAt.set(nodeId, now)
   http.post(`/library/recent/${nodeId}`).catch(() => {})
+}
 
 export const clearRecentViews = () => http.delete('/library/recent')
 

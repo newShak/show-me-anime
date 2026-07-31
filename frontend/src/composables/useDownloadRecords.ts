@@ -16,6 +16,7 @@ export const useDownloadRecords = (active: Ref<boolean>) => {
   const loading = ref(false)
   const items = ref<DownloadRecord[]>([])
   const total = ref(0)
+  const pageTotalBytes = ref(0)
   const page = ref(1)
   const pageSize = ref(20)
   const statusFilter = ref<DownloadRecordStatusFilter>('')
@@ -55,6 +56,7 @@ export const useDownloadRecords = (active: Ref<boolean>) => {
       })
       items.value = data.items
       total.value = data.total
+      pageTotalBytes.value = data.page_total_bytes
       if (hasActive()) startPoll()
       else stopPoll()
     } finally {
@@ -170,6 +172,7 @@ export const useDownloadRecords = (active: Ref<boolean>) => {
     loading,
     items,
     total,
+    pageTotalBytes,
     page,
     pageSize,
     statusFilter,

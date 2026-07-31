@@ -27,6 +27,19 @@ def test_recent_and_batch_nodes(client, gallery):
     assert [n["id"] for n in batch] == list(reversed(ids))
 
 
+def test_node_ancestors(client, gallery):
+    _make_album(gallery, "parent/child")
+    client.post("/api/scan/trigger")
+
+    root = client.get("/api/nodes").json()
+    parent = next(n for n in root if n["name"] == "parent")
+    child = client.get("/api/nodes", params={"parent_id": parent["id"]}).json()[0]
+
+    ancestors = client.get(f"/api/nodes/{child['id']}/ancestors").json()
+    assert [n["id"] for n in ancestors] == [parent["id"]]
+    assert ancestors[0]["name"] == "parent"
+
+
 def test_recent_nodes_range_and_offset(client, gallery):
     from app.db.models import Node
     from app.db.session import SessionLocal, get_engine
