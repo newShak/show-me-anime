@@ -89,6 +89,9 @@ export const resumeDownloadJob = (jobId: string) =>
 export const cancelDownloadJob = (jobId: string) =>
   http.post<DownloadJob>(`/download/jobs/${jobId}/cancel`)
 
+export const retryDownloadJob = (jobId: string) =>
+  http.post<DownloadJob>(`/download/jobs/${jobId}/retry`)
+
 export const overwriteDownloadJob = (jobId: string) =>
   http.post<DownloadJob>(`/download/jobs/${jobId}/overwrite`)
 
