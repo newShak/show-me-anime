@@ -13,7 +13,6 @@ from pathlib import Path
 import httpx
 
 from app.config import get_settings
-from app.services.download.http_client import cdn_download_headers
 
 logger = logging.getLogger(__name__)
 
@@ -177,7 +176,7 @@ def _download_file_resumable_once(
         reset_partial_download(dest.parent)
         partial = 0
 
-    headers: dict[str, str] = cdn_download_headers(referer.rstrip("/")) if referer else {}
+    headers: dict[str, str] = {"Referer": referer} if referer else {}
     headers["Accept-Encoding"] = "identity"
     if partial > 0:
         headers["Range"] = f"bytes={partial}-"

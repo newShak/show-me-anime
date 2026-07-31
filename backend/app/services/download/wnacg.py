@@ -38,17 +38,8 @@ _cover_url_cache: dict[str, str] = {}
 _preview_url_cache: dict[str, list[str]] = {}
 _preview_meta_cache: dict[str, dict[str, int]] = {}
 _effective_base_cache: dict[str, str] = {}
-_link_sign_sem: threading.Semaphore | None = None
-_link_sign_sem_size = 0
-
-
-def _link_sign_semaphore() -> threading.Semaphore:
-    global _link_sign_sem, _link_sign_sem_size
-    size = max(1, get_settings().download_concurrency)
-    if _link_sign_sem is None or _link_sign_sem_size != size:
-        _link_sign_sem = threading.Semaphore(size)
-        _link_sign_sem_size = size
-    return _link_sign_sem
+# generate-link 必须串行，并发 POST 会被 CDN WAF 403
+_link_sign_lock = threading.Lock()
 
 
 def _cdn_url_flags(url: str) -> tuple[str, bool, bool]:
@@ -123,6 +114,7 @@ class WnacgAdapter:
 
     def _live_resolve_download(self, album_id: str) -> DownloadTarget:
         referer_base = self._effective_base_url()
+        download_page = f"{referer_base}/download-index-aid-{album_id}.html"
         html = self._get_html(f"/download-index-aid-{album_id}.html")
         cfg = parse_download_page(html)
         url = self._fetch_signed_download_url(
@@ -130,7 +122,9 @@ class WnacgAdapter:
             cfg["worker_api"],
             cfg["file_key"],
             cfg["file_name"],
+            download_page,
             referer_base,
+            cfg["backup_url"],
         )
         cdn_host, signed, has_expiry = _cdn_url_flags(url)
         logger.info(
@@ -146,7 +140,7 @@ class WnacgAdapter:
             kind="archive",
             urls=[url],
             filename=cfg["file_name"],
-            referer=f"{referer_base}/",
+            referer=download_page,
             file_key=cfg["file_key"],
         )
 
@@ -156,23 +150,21 @@ class WnacgAdapter:
         worker_api: str,
         file_key: str,
         file_name: str,
+        referer: str,
         origin: str,
+        backup_url: str,
     ) -> str:
-        headers = generate_link_headers(origin)
+        headers = generate_link_headers(referer, origin)
         last_err = ""
-        sem = _link_sign_semaphore()
         for attempt in range(3):
             try:
-                sem.acquire()
-                try:
+                with _link_sign_lock:
                     with download_client(self.settings) as client:
                         res = client.post(
                             worker_api,
                             json={"file_key": file_key, "file_name": file_name},
                             headers=headers,
                         )
-                finally:
-                    sem.release()
                 if res.status_code == 200:
                     data = res.json()
                     if data.get("success") and data.get("url"):
@@ -187,12 +179,16 @@ class WnacgAdapter:
                     )
                 else:
                     last_err = f"HTTP {res.status_code}"
+                    body = (res.text or "")[:200]
                     logger.warning(
-                        "generate-link HTTP %s aid=%s worker=%s attempt=%s",
+                        "generate-link HTTP %s aid=%s worker=%s attempt=%s origin=%s referer=%s body=%s",
                         res.status_code,
                         album_id,
                         worker_api,
                         attempt + 1,
+                        headers.get("Origin"),
+                        referer,
+                        body,
                     )
             except Exception as exc:
                 last_err = str(exc)
@@ -205,6 +201,9 @@ class WnacgAdapter:
                 )
             if attempt < 2:
                 time.sleep(0.6 * (attempt + 1))
+        if backup_url:
+            logger.info("generate-link fallback backup_url aid=%s url=%s", album_id, backup_url[:120])
+            return backup_url
         raise ValueError(f"无法获取下载链接，请检查代理或稍后重试 ({last_err})")
 
     def fetch_cover_bytes(self, album_id: str) -> tuple[bytes, str]:

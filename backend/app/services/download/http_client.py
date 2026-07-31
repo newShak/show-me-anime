@@ -31,8 +31,15 @@ def site_origin_headers(origin: str) -> dict[str, str]:
     return {"Origin": base, "Referer": f"{base}/"}
 
 
-def generate_link_headers(origin: str) -> dict[str, str]:
-    return {**CORS_API_HEADERS, **site_origin_headers(origin), "Content-Type": "application/json"}
+def generate_link_headers(referer: str, origin: str) -> dict[str, str]:
+    """generate-link 用最小请求头；勿带 sec-fetch，非浏览器 TLS 易被 CDN WAF 403。"""
+    base = origin.rstrip("/")
+    return {
+        "Accept": "application/json, text/plain, */*",
+        "Content-Type": "application/json",
+        "Origin": base,
+        "Referer": referer,
+    }
 
 
 def cdn_download_headers(referer_origin: str) -> dict[str, str]:
