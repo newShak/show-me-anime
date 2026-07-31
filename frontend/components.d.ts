@@ -62,6 +62,7 @@ declare module 'vue' {
     NodeEditDialog: typeof import('./src/components/NodeEditDialog.vue')['default']
     NodeMoveDialog: typeof import('./src/components/NodeMoveDialog.vue')['default']
     NodeTree: typeof import('./src/components/NodeTree.vue')['default']
+    ReaderFitControl: typeof import('./src/components/ReaderFitControl.vue')['default']
     RemoteAlbumGrid: typeof import('./src/components/RemoteAlbumGrid.vue')['default']
     RouterLink: typeof import('vue-router')['RouterLink']
     RouterView: typeof import('vue-router')['RouterView']

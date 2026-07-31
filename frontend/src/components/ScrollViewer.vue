@@ -1,19 +1,22 @@
 <template>
-  <div class="viewer" tabindex="0" ref="rootRef" @keydown="onKeydown">
+  <div class="viewer" :class="`fit-${fitModel}`" tabindex="0" ref="rootRef" @keydown="onKeydown">
     <header class="bar">
       <el-button text @click="emit('close')">← 返回</el-button>
       <span class="title">{{ title }}</span>
-      <div class="modes">
-        <el-button text :type="mode === 'page' ? 'primary' : undefined" @click="emit('mode-change', 'page')">
-          翻页
-        </el-button>
-        <el-button text :type="mode === 'scroll' ? 'primary' : undefined" @click="emit('mode-change', 'scroll')">
-          滚动
-        </el-button>
-        <el-button text @click="toggleThumbs">{{ thumbsVisible ? '隐藏预览' : '显示预览' }}</el-button>
-        <el-button text :type="favorited ? 'warning' : undefined" @click="emit('toggle-favorite')">
-          <el-icon><StarFilled v-if="favorited" /><Star v-else /></el-icon>
-        </el-button>
+      <div class="bar-tools">
+        <div class="modes">
+          <el-button text :type="mode === 'page' ? 'primary' : undefined" @click="emit('mode-change', 'page')">
+            翻页
+          </el-button>
+          <el-button text :type="mode === 'scroll' ? 'primary' : undefined" @click="emit('mode-change', 'scroll')">
+            滚动
+          </el-button>
+          <el-button text @click="toggleThumbs">{{ thumbsVisible ? '隐藏预览' : '显示预览' }}</el-button>
+          <el-button text :type="favorited ? 'warning' : undefined" @click="emit('toggle-favorite')">
+            <el-icon><StarFilled v-if="favorited" /><Star v-else /></el-icon>
+          </el-button>
+        </div>
+        <ReaderFitControl v-model="fitModel" />
       </div>
       <span class="page">{{ activePage + 1 }} / {{ total }}</span>
     </header>
@@ -68,8 +71,9 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { Star, StarFilled } from '@element-plus/icons-vue'
+import ReaderFitControl from '@/components/ReaderFitControl.vue'
 import { imageFileUrl, imageThumbUrl } from '@/api/nodes'
-import type { ReaderMode } from '@/types/reader'
+import type { ReaderFitMode, ReaderMode } from '@/types/reader'
 
 const THUMB_PAD = 8
 const THUMB_GAP = 8
@@ -89,6 +93,8 @@ const props = defineProps<{
   cacheVersion?: number
   favorited?: boolean
 }>()
+
+const fitModel = defineModel<ReaderFitMode>('fit', { required: true })
 
 const emit = defineEmits<{
   close: []
@@ -285,10 +291,19 @@ onUnmounted(() => resizeObserver?.disconnect())
   padding: 8px 16px;
   background: rgba(0, 0, 0, 0.6);
   flex-shrink: 0;
+  flex-wrap: wrap;
+}
+
+.bar-tools {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
 }
 
 .title {
   flex: 1;
+  min-width: 120px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -297,6 +312,7 @@ onUnmounted(() => resizeObserver?.disconnect())
 .modes {
   display: flex;
   gap: 4px;
+  flex-wrap: wrap;
 }
 
 .page {
@@ -400,15 +416,59 @@ onUnmounted(() => resizeObserver?.disconnect())
   margin: 0;
   display: flex;
   justify-content: center;
+  align-items: center;
   background: #111;
 }
 
 .page-block img {
   display: block;
+  user-select: none;
+}
+
+.viewer.fit-width .page-block img {
   width: 100%;
   max-width: 100%;
   height: auto;
-  user-select: none;
+}
+
+.viewer.fit-screen .page-block {
+  min-height: calc(100vh - var(--reader-chrome, 80px));
+}
+
+.viewer.fit-screen .page-block img {
+  width: auto;
+  height: auto;
+  max-width: 100%;
+  max-height: calc(100vh - var(--reader-chrome, 80px));
+  object-fit: contain;
+}
+
+.viewer.fit-limit .page-block {
+  max-width: 960px;
+  margin-inline: auto;
+  width: 100%;
+}
+
+.viewer.fit-limit .page-block img {
+  width: 100%;
+  max-width: 100%;
+  height: auto;
+}
+
+.viewer.fit-original .scroll {
+  overflow-x: auto;
+}
+
+.viewer.fit-original .page-block {
+  justify-content: flex-start;
+  width: max-content;
+  min-width: 100%;
+}
+
+.viewer.fit-original .page-block img {
+  width: auto;
+  max-width: none;
+  height: auto;
 }
 
 .hint {

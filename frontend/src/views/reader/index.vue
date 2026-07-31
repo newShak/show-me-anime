@@ -1,6 +1,7 @@
 <template>
   <ImageViewer
     v-if="ready && mode === 'page'"
+    v-model:fit="fit"
     :node-id="nodeId"
     :total="total"
     :page="page"
@@ -15,6 +16,7 @@
   />
   <ScrollViewer
     v-else-if="ready"
+    v-model:fit="fit"
     :node-id="nodeId"
     :total="total"
     :page="page"
@@ -35,10 +37,11 @@ import { useRoute, useRouter } from 'vue-router'
 import ImageViewer from '@/components/ImageViewer.vue'
 import ScrollViewer from '@/components/ScrollViewer.vue'
 import { resolveReaderMode, saveReaderMode } from '@/composables/useReaderMode'
+import { getStoredReaderFit, saveReaderFit } from '@/composables/useReaderFit'
 import { fetchFavoriteIds, toggleFavorite } from '@/composables/useFavorites'
 import { touchRecentView } from '@/composables/useRecentView'
 import { fetchNode, fetchNodeImages, fetchProgress, saveProgress } from '@/api/nodes'
-import type { ReaderMode } from '@/types/reader'
+import type { ReaderFitMode, ReaderMode } from '@/types/reader'
 
 const route = useRoute()
 const router = useRouter()
@@ -51,8 +54,11 @@ const ready = ref(false)
 const cacheVersion = ref(0)
 const favoriteIds = ref<number[]>([])
 const mode = ref<ReaderMode>(resolveReaderMode(route.query.mode as string | undefined))
+const fit = ref<ReaderFitMode>(getStoredReaderFit())
 
 const favorited = computed(() => favoriteIds.value.includes(nodeId.value))
+
+watch(fit, (next) => saveReaderFit(next))
 
 let saveTimer: ReturnType<typeof setTimeout> | null = null
 

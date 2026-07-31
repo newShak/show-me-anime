@@ -57,9 +57,13 @@
           :node-tags="nodeTagsMap"
           :progress-map="progressPercentMap"
           :favorite-ids="favoriteIds"
-          :show-menu="false"
+          show-menu
           @open="openNode"
           @toggle-favorite="onToggleFavorite"
+          @edit="openEdit"
+          @add-tags="(node) => openTagPicker([node.id])"
+          @move="(node) => openMovePicker([node.id])"
+          @delete="onDeleteNode"
         />
         <div ref="sentinelRef" class="sentinel">
           <el-skeleton v-if="loadingMore" :rows="2" animated />
@@ -83,6 +87,28 @@
         ↑
       </button>
     </Transition>
+
+    <NodeEditDialog v-model="editOpen" :node="editNode" @saved="onEditSaved" @closed="editNode = null" />
+
+    <TagPickerDialog
+      v-model="tagPickerOpen"
+      :all-tags="allTags"
+      :existing-tags="tagPickerExistingTags"
+      :exclude-tag-ids="tagPickerExcludeIds"
+      :title="tagPickerTitle"
+      :submitting="tagPickerSubmitting"
+      @confirm="onTagPickerConfirm"
+      @remove="onTagPickerRemove"
+      @tag-created="onTagCreated"
+    />
+
+    <NodeMoveDialog
+      v-model="movePickerOpen"
+      :title="movePickerTitle"
+      :exclude-paths="moveExcludePaths"
+      :submitting="moving"
+      @confirm="onMoveConfirm"
+    />
   </div>
 </template>
 
@@ -90,12 +116,16 @@
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { Close } from '@element-plus/icons-vue'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import SearchBar from '@/components/SearchBar.vue'
 import TagSelect from '@/components/TagSelect.vue'
 import AlbumGrid from '@/components/AlbumGrid.vue'
+import NodeEditDialog from '@/components/NodeEditDialog.vue'
+import NodeMoveDialog from '@/components/NodeMoveDialog.vue'
+import TagPickerDialog from '@/components/TagPickerDialog.vue'
 import { searchNodes } from '@/api/search'
-import { fetchNodesProgress } from '@/api/nodes'
-import { fetchNodesTags, fetchTags } from '@/api/tags'
+import { deleteNodes, fetchNodesProgress, moveNodes } from '@/api/nodes'
+import { batchAddNodeTags, fetchNodesTags, fetchTags, removeNodeTag } from '@/api/tags'
 import { fetchFavoriteIds, toggleFavorite } from '@/composables/useFavorites'
 import { touchRecentView } from '@/composables/useRecentView'
 import {
@@ -131,6 +161,14 @@ const sentinelRef = ref<HTMLElement | null>(null)
 const showTopBtn = ref(false)
 const favoriteIds = ref<number[]>([])
 const historyItems = ref<SearchHistoryItem[]>(getSearchHistory())
+const editOpen = ref(false)
+const editNode = ref<NodeItem | null>(null)
+const tagPickerOpen = ref(false)
+const tagPickerNodeIds = ref<number[]>([])
+const tagPickerSubmitting = ref(false)
+const movePickerOpen = ref(false)
+const moveNodeIds = ref<number[]>([])
+const moving = ref(false)
 
 const refreshHistory = () => {
   historyItems.value = getSearchHistory()
@@ -162,6 +200,38 @@ const summaryText = computed(() => {
     parts.push(`标签${selectedTagIds.value.length > 1 && tagMode.value === 'and' ? '（全部）' : ''}「${names.join(joiner)}」`)
   }
   return parts.join('，')
+})
+
+const tagPickerTitle = computed(() =>
+  tagPickerNodeIds.value.length > 1
+    ? `批量标签（${tagPickerNodeIds.value.length} 项）`
+    : '标签',
+)
+
+const movePickerTitle = computed(() =>
+  moveNodeIds.value.length > 1 ? `移动 ${moveNodeIds.value.length} 项到` : '移动到',
+)
+
+const moveExcludePaths = computed(() =>
+  items.value.filter((n) => moveNodeIds.value.includes(n.id)).map((n) => n.path),
+)
+
+const tagPickerExistingTags = computed(() => {
+  const ids = tagPickerNodeIds.value
+  if (!ids.length) return []
+  const seen = new Map<number, TagItem>()
+  for (const id of ids) {
+    for (const tag of nodeTagsMap.value[id] ?? []) seen.set(tag.id, tag)
+  }
+  return [...seen.values()].sort((a, b) => a.name.localeCompare(b.name))
+})
+
+const tagPickerExcludeIds = computed(() => {
+  const ids = tagPickerNodeIds.value
+  if (!ids.length) return []
+  if (ids.length === 1) return (nodeTagsMap.value[ids[0]] ?? []).map((t) => t.id)
+  const tagSets = ids.map((id) => new Set((nodeTagsMap.value[id] ?? []).map((t) => t.id)))
+  return [...tagSets[0]].filter((tagId) => tagSets.every((s) => s.has(tagId)))
 })
 
 const syncRoute = () => {
@@ -302,6 +372,130 @@ const onToggleFavorite = async (node: NodeItem) => {
   favoriteIds.value = data.favorited
     ? [...new Set([...favoriteIds.value, node.id])]
     : favoriteIds.value.filter((id) => id !== node.id)
+}
+
+const openEdit = (node: NodeItem) => {
+  editNode.value = node
+  editOpen.value = true
+}
+
+const onEditSaved = (node?: NodeItem) => {
+  if (node) items.value = items.value.map((n) => (n.id === node.id ? node : n))
+}
+
+const openTagPicker = (nodeIds: number[]) => {
+  tagPickerNodeIds.value = nodeIds
+  tagPickerOpen.value = true
+}
+
+const onTagCreated = (tag: TagItem) => {
+  if (!allTags.value.some((t) => t.id === tag.id)) {
+    allTags.value = [...allTags.value, tag].sort((a, b) => a.name.localeCompare(b.name))
+  }
+}
+
+const refreshNodeTags = async (ids: number[]) => {
+  if (!ids.length) return
+  const { data } = await fetchNodesTags(ids)
+  const next = { ...nodeTagsMap.value }
+  for (const g of data) next[g.node_id] = g.tags
+  nodeTagsMap.value = next
+}
+
+const onTagPickerConfirm = async (tagIds: number[]) => {
+  if (!tagPickerNodeIds.value.length || !tagIds.length) return
+  tagPickerSubmitting.value = true
+  try {
+    const { data } = await batchAddNodeTags(tagPickerNodeIds.value, tagIds)
+    const n = tagPickerNodeIds.value.length
+    ElMessage.success(n > 1 ? `已为 ${data.updated} 个相册添加标签` : '已添加标签')
+    const ids = [...tagPickerNodeIds.value]
+    tagPickerOpen.value = false
+    tagPickerNodeIds.value = []
+    await refreshNodeTags(ids)
+  } catch {
+    ElMessage.error('添加标签失败')
+  } finally {
+    tagPickerSubmitting.value = false
+  }
+}
+
+const onTagPickerRemove = async (tagId: number) => {
+  const nodeIds = tagPickerNodeIds.value.filter((id) =>
+    (nodeTagsMap.value[id] ?? []).some((t) => t.id === tagId),
+  )
+  if (!nodeIds.length) return
+  try {
+    await Promise.all(nodeIds.map((id) => removeNodeTag(id, tagId)))
+    await refreshNodeTags(nodeIds)
+    ElMessage.success('已移除标签')
+  } catch {
+    ElMessage.error('移除标签失败')
+  }
+}
+
+const openMovePicker = (nodeIds: number[]) => {
+  moveNodeIds.value = nodeIds
+  movePickerOpen.value = true
+}
+
+const onMoveConfirm = async (targetParentId: number | null) => {
+  if (!moveNodeIds.value.length) return
+  moving.value = true
+  try {
+    const ids = [...moveNodeIds.value]
+    const { data } = await moveNodes({ ids, target_parent_id: targetParentId })
+    if (data.errors.length) {
+      ElMessage.warning(
+        data.moved > 0
+          ? `已移动 ${data.moved} 项，部分失败：${data.errors.join('; ')}`
+          : data.errors.join('; '),
+      )
+    } else {
+      ElMessage.success(`已移动 ${data.moved} 项`)
+    }
+    if (data.moved > 0) {
+      if (data.errors.length) await runSearch()
+      else {
+        const moved = new Set(ids)
+        items.value = items.value.filter((n) => !moved.has(n.id))
+        total.value = Math.max(0, total.value - data.moved)
+      }
+    }
+    movePickerOpen.value = false
+    moveNodeIds.value = []
+  } catch {
+    ElMessage.error('移动失败')
+  } finally {
+    moving.value = false
+  }
+}
+
+const deleteHint = (node: NodeItem) =>
+  node.source_type === 'zip' ? '磁盘上的压缩包将被永久删除。' : '磁盘上的文件夹将被永久删除。'
+
+const onDeleteNode = async (node: NodeItem) => {
+  try {
+    await ElMessageBox.confirm(
+      `确定删除「${node.name}」？\n\n${deleteHint(node)}`,
+      '删除确认',
+      { type: 'warning', confirmButtonText: '删除', cancelButtonText: '取消' },
+    )
+  } catch {
+    return
+  }
+  try {
+    const { data } = await deleteNodes([node.id])
+    if (data.errors.length) {
+      ElMessage.error(data.errors.join('; '))
+      return
+    }
+    items.value = items.value.filter((n) => n.id !== node.id)
+    total.value = Math.max(0, total.value - 1)
+    ElMessage.success('已删除')
+  } catch {
+    ElMessage.error('删除失败')
+  }
 }
 
 const scrollToTop = () => {

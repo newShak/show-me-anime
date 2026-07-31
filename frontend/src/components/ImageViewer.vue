@@ -1,18 +1,21 @@
 <template>
-  <div class="viewer" tabindex="0" ref="rootRef" @keydown="onKeydown">
+  <div class="viewer" :class="`fit-${fitModel}`" tabindex="0" ref="rootRef" @keydown="onKeydown">
     <header class="bar">
       <el-button text @click="emit('close')">← 返回</el-button>
       <span class="title">{{ title }}</span>
-      <div class="modes">
-        <el-button text :type="mode === 'page' ? 'primary' : undefined" @click="emit('mode-change', 'page')">
-          翻页
-        </el-button>
-        <el-button text :type="mode === 'scroll' ? 'primary' : undefined" @click="emit('mode-change', 'scroll')">
-          滚动
-        </el-button>
-        <el-button text :type="favorited ? 'warning' : undefined" @click="emit('toggle-favorite')">
-          <el-icon><StarFilled v-if="favorited" /><Star v-else /></el-icon>
-        </el-button>
+      <div class="bar-tools">
+        <div class="modes">
+          <el-button text :type="mode === 'page' ? 'primary' : undefined" @click="emit('mode-change', 'page')">
+            翻页
+          </el-button>
+          <el-button text :type="mode === 'scroll' ? 'primary' : undefined" @click="emit('mode-change', 'scroll')">
+            滚动
+          </el-button>
+          <el-button text :type="favorited ? 'warning' : undefined" @click="emit('toggle-favorite')">
+            <el-icon><StarFilled v-if="favorited" /><Star v-else /></el-icon>
+          </el-button>
+        </div>
+        <ReaderFitControl v-model="fitModel" />
       </div>
       <span class="page">{{ page + 1 }} / {{ total }}</span>
     </header>
@@ -34,8 +37,9 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
 import { Star, StarFilled } from '@element-plus/icons-vue'
+import ReaderFitControl from '@/components/ReaderFitControl.vue'
 import { imageFileUrl } from '@/api/nodes'
-import type { ReaderMode } from '@/types/reader'
+import type { ReaderFitMode, ReaderMode } from '@/types/reader'
 
 const props = defineProps<{
   nodeId: number
@@ -46,6 +50,8 @@ const props = defineProps<{
   cacheVersion?: number
   favorited?: boolean
 }>()
+
+const fitModel = defineModel<ReaderFitMode>('fit', { required: true })
 
 const emit = defineEmits<{
   close: []
@@ -115,10 +121,19 @@ onMounted(() => rootRef.value?.focus())
   gap: 12px;
   padding: 8px 16px;
   background: rgba(0, 0, 0, 0.6);
+  flex-wrap: wrap;
+}
+
+.bar-tools {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
 }
 
 .title {
   flex: 1;
+  min-width: 120px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -127,6 +142,7 @@ onMounted(() => rootRef.value?.focus())
 .modes {
   display: flex;
   gap: 4px;
+  flex-wrap: wrap;
 }
 
 .page {
@@ -141,13 +157,45 @@ onMounted(() => rootRef.value?.focus())
   justify-content: center;
   min-height: 0;
   cursor: pointer;
+  overflow: auto;
 }
 
 .stage img {
+  user-select: none;
+}
+
+.viewer.fit-width .stage img {
+  width: 100%;
+  max-width: 100%;
+  height: auto;
+}
+
+.viewer.fit-screen .stage img {
   max-width: 100%;
   max-height: 100%;
+  width: auto;
+  height: auto;
   object-fit: contain;
-  user-select: none;
+}
+
+.viewer.fit-limit .stage img {
+  width: 100%;
+  max-width: min(960px, 100%);
+  height: auto;
+  max-height: 100%;
+  object-fit: contain;
+}
+
+.viewer.fit-original .stage {
+  align-items: flex-start;
+  justify-content: flex-start;
+}
+
+.viewer.fit-original .stage img {
+  width: auto;
+  max-width: none;
+  max-height: none;
+  height: auto;
 }
 
 .hint {
