@@ -41,6 +41,29 @@
                 <el-option v-for="opt in LOG_LEVEL_OPTIONS" :key="opt.value" :label="opt.label" :value="opt.value" />
               </el-select>
             </el-form-item>
+            <el-form-item label="写入文件">
+              <el-switch v-model="form.log_file_enabled" />
+            </el-form-item>
+            <el-form-item label="日志目录">
+              <el-input v-model="form.log_dir" :disabled="!form.log_file_enabled" />
+            </el-form-item>
+            <el-form-item label="单文件上限">
+              <el-input-number
+                v-model="logFileMaxMb"
+                :min="1"
+                :max="100"
+                :disabled="!form.log_file_enabled"
+              />
+              <span class="unit">MB（按天或超限滚动）</span>
+            </el-form-item>
+            <el-form-item label="保留天数">
+              <el-input-number
+                v-model="form.log_file_retention_days"
+                :min="1"
+                :max="365"
+                :disabled="!form.log_file_enabled"
+              />
+            </el-form-item>
           </section>
 
           <section class="form-block">
@@ -100,7 +123,7 @@
 
 <script setup lang="ts">
 
-import { onMounted, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 
 import { ElMessage, ElMessageBox } from 'element-plus'
 
@@ -143,6 +166,12 @@ const LOG_LEVEL_OPTIONS: { label: string; value: LogLevel }[] = [
 
 
 const form = ref<Settings | null>(null)
+const logFileMaxMb = computed({
+  get: () => Math.round((form.value?.log_file_max_bytes ?? 10 * 1024 * 1024) / (1024 * 1024)),
+  set: (mb: number) => {
+    if (form.value) form.value.log_file_max_bytes = mb * 1024 * 1024
+  },
+})
 
 const savingSettings = ref(false)
 
@@ -183,6 +212,14 @@ const onSaveSettings = async () => {
       watch_debounce_seconds: form.value.watch_debounce_seconds,
 
       log_level: form.value.log_level,
+
+      log_dir: form.value.log_dir,
+
+      log_file_enabled: form.value.log_file_enabled,
+
+      log_file_max_bytes: form.value.log_file_max_bytes,
+
+      log_file_retention_days: form.value.log_file_retention_days,
 
       recent_view_limit: form.value.recent_view_limit,
 
@@ -410,6 +447,12 @@ onMounted(load)
   margin-top: 16px;
   padding-top: 16px;
   border-top: 1px solid var(--el-border-color-lighter);
+}
+
+.unit {
+  margin-left: 8px;
+  font-size: 12px;
+  color: var(--el-text-color-secondary);
 }
 
 .local-hint {

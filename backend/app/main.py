@@ -10,7 +10,7 @@ from fastapi.staticfiles import StaticFiles
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.responses import FileResponse
 
-from app.api import download, health, library, nodes, scan, search, settings as settings_api, tags, tasks
+from app.api import download, health, library, logs, nodes, scan, search, settings as settings_api, tags, tasks
 from app.config import get_settings
 from app.db.session import SessionLocal, get_engine, init_db
 from app.logging_config import set_log_level, setup_logging
@@ -18,7 +18,7 @@ from app.services.scan_runner import reconcile_stale_scan_jobs
 from app.services.download.jobs import reconcile_stale_download_jobs
 from app.services.watcher import start_gallery_watcher, stop_gallery_watcher
 
-setup_logging(get_settings().log_level)
+setup_logging(settings=get_settings())
 logger = logging.getLogger(__name__)
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -47,11 +47,12 @@ async def lifespan(_: FastAPI):
     settings = get_settings()
     set_log_level(settings.log_level)
     logger.info(
-        "starting gallery_root=%s thumb_dir=%s watch=%s log_level=%s db=%s",
+        "starting gallery_root=%s thumb_dir=%s watch=%s log_level=%s log_dir=%s db=%s",
         settings.gallery_root,
         settings.thumb_dir,
         settings.watch_enabled,
         settings.log_level,
+        settings.log_dir,
         settings.database_url,
     )
     init_db()
@@ -85,6 +86,7 @@ app.include_router(scan.router, prefix="/api")
 app.include_router(search.router, prefix="/api")
 app.include_router(tags.router, prefix="/api")
 app.include_router(tasks.router, prefix="/api")
+app.include_router(logs.router, prefix="/api")
 app.include_router(download.router, prefix="/api")
 
 if STATIC_DIR.is_dir():

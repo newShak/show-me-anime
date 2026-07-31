@@ -16,6 +16,10 @@ class SettingsResponse(BaseModel):
     watch_debounce_seconds: int
     album_list_cache_ttl: int
     log_level: LogLevel = "INFO"
+    log_dir: str = "/data/logs"
+    log_file_enabled: bool = True
+    log_file_max_bytes: int = 10 * 1024 * 1024
+    log_file_retention_days: int = 30
     recent_view_limit: int = 20
     recent_added_limit: int = 20
     host: str
@@ -38,6 +42,10 @@ class SettingsUpdate(BaseModel):
     watch_enabled: bool | None = None
     watch_debounce_seconds: int | None = Field(default=None, ge=1, le=60)
     log_level: LogLevel | None = None
+    log_dir: str | None = None
+    log_file_enabled: bool | None = None
+    log_file_max_bytes: int | None = Field(default=None, ge=1024 * 1024, le=100 * 1024 * 1024)
+    log_file_retention_days: int | None = Field(default=None, ge=1, le=365)
     recent_view_limit: int | None = Field(default=None, ge=1, le=100)
     recent_added_limit: int | None = Field(default=None, ge=1, le=100)
     download_proxy_enabled: bool | None = None

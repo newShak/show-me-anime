@@ -36,6 +36,10 @@ class Settings(BaseSettings):
     watch_debounce_seconds: int = Field(default=3)
     album_list_cache_ttl: int = Field(default=300)
     log_level: str = Field(default="INFO")
+    log_dir: Path = Field(default=Path("/data/logs"))
+    log_file_enabled: bool = Field(default=True)
+    log_file_max_bytes: int = Field(default=10 * 1024 * 1024, ge=1024 * 1024, le=100 * 1024 * 1024)
+    log_file_retention_days: int = Field(default=30, ge=1, le=365)
     recent_view_limit: int = Field(default=20, ge=1, le=100)
     recent_added_limit: int = Field(default=20, ge=1, le=100)
     host: str = Field(default="0.0.0.0")
@@ -62,6 +66,7 @@ class Settings(BaseSettings):
         self.gallery_root = _to_abs(self.gallery_root)
         self.thumb_dir = _to_abs(self.thumb_dir)
         self.download_cache_dir = _to_abs(self.download_cache_dir)
+        self.log_dir = _to_abs(self.log_dir)
         if self.gallery_root.exists() and not self.gallery_root.is_dir():
             raise ValueError(f"画廊根目录不可用: {self.gallery_root}")
         if self.thumb_dir.exists() and not self.thumb_dir.is_dir():
@@ -69,6 +74,8 @@ class Settings(BaseSettings):
         self.gallery_root.mkdir(parents=True, exist_ok=True)
         self.thumb_dir.mkdir(parents=True, exist_ok=True)
         self.download_cache_dir.mkdir(parents=True, exist_ok=True)
+        if self.log_file_enabled:
+            self.log_dir.mkdir(parents=True, exist_ok=True)
         if not self.gallery_root.is_dir():
             raise ValueError(f"画廊根目录不可用: {self.gallery_root}")
         if not self.thumb_dir.is_dir():
@@ -85,6 +92,10 @@ class Settings(BaseSettings):
             "watch_debounce_seconds": self.watch_debounce_seconds,
             "album_list_cache_ttl": self.album_list_cache_ttl,
             "log_level": self.log_level.upper(),
+            "log_dir": str(self.log_dir),
+            "log_file_enabled": self.log_file_enabled,
+            "log_file_max_bytes": self.log_file_max_bytes,
+            "log_file_retention_days": self.log_file_retention_days,
             "recent_view_limit": self.recent_view_limit,
             "recent_added_limit": self.recent_added_limit,
             "host": self.host,

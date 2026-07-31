@@ -1,5 +1,16 @@
 <template>
   <div class="record-table" :class="{ fullscreen: isFullscreen }">
+    <div class="toolbar">
+      <el-radio-group
+        :model-value="statusFilter"
+        size="small"
+        @change="(v: DownloadRecordStatusFilter) => emit('status-change', v)"
+      >
+        <el-radio-button v-for="opt in statusOptions" :key="opt.value" :value="opt.value">
+          {{ opt.label }}
+        </el-radio-button>
+      </el-radio-group>
+    </div>
     <el-table v-loading="loading" :data="items" :size="isFullscreen ? 'default' : 'small'" stripe empty-text="暂无记录">
       <el-table-column label="标题" :min-width="isFullscreen ? 200 : 120" show-overflow-tooltip>
         <template #default="{ row }">{{ row.title }}</template>
@@ -31,7 +42,7 @@
       <el-table-column label="时间" :width="isFullscreen ? 168 : 140">
         <template #default="{ row }">{{ formatTime(row.created_at) }}</template>
       </el-table-column>
-      <el-table-column label="操作" :width="isFullscreen ? 140 : 120" align="center" fixed="right">
+      <el-table-column label="操作" :width="isFullscreen ? 168 : 148" align="center" fixed="right">
         <template #default="{ row }">
           <el-button
             v-if="row.status === 'failed'"
@@ -53,23 +64,35 @@
           >
             强制覆盖
           </el-button>
+          <el-button
+            v-if="canDelete(row)"
+            type="danger"
+            link
+            size="small"
+            :loading="deletingId === row.id"
+            @click="emit('delete', row)"
+          >
+            删除
+          </el-button>
         </template>
       </el-table-column>
     </el-table>
     <el-pagination
-      v-if="total > pageSize"
       class="pager"
-      layout="total, prev, pager, next"
+      layout="total, sizes, prev, pager, next"
       :small="!isFullscreen"
       :total="total"
       :current-page="page"
       :page-size="pageSize"
+      :page-sizes="[10, 20, 50]"
       @current-change="(p: number) => emit('page-change', p)"
+      @size-change="(s: number) => emit('page-size-change', s)"
     />
   </div>
 </template>
 
 <script setup lang="ts">
+import type { DownloadRecordStatusFilter } from '@/composables/useDownloadRecords'
 import type { DownloadRecord } from '@/types/download'
 
 defineProps<{
@@ -78,18 +101,32 @@ defineProps<{
   total: number
   page: number
   pageSize: number
+  statusFilter: DownloadRecordStatusFilter
   retryingId: string | null
   overwritingId: string | null
+  deletingId: string | null
   isFullscreen?: boolean
 }>()
 
 const emit = defineEmits<{
   'page-change': [page: number]
+  'page-size-change': [size: number]
+  'status-change': [status: DownloadRecordStatusFilter]
   retry: [row: DownloadRecord]
   overwrite: [row: DownloadRecord]
+  delete: [row: DownloadRecord]
 }>()
 
+const statusOptions: { value: DownloadRecordStatusFilter; label: string }[] = [
+  { value: '', label: '全部' },
+  { value: 'pending', label: '等待' },
+  { value: 'running', label: '下载中' },
+  { value: 'done', label: '完成' },
+  { value: 'failed', label: '失败' },
+]
+
 const isActive = (row: DownloadRecord) => row.status === 'pending' || row.status === 'running'
+const canDelete = (row: DownloadRecord) => row.status === 'done' || row.status === 'failed'
 
 const statusType = (status: string) => {
   if (status === 'done') return 'success'
@@ -118,6 +155,11 @@ const formatTime = (ts: number) => new Date(ts * 1000).toLocaleString()
 </script>
 
 <style scoped>
+.toolbar {
+  margin-bottom: 12px;
+  overflow-x: auto;
+}
+
 .msg {
   margin: 4px 0 0;
   font-size: 11px;

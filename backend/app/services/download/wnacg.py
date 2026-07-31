@@ -10,7 +10,7 @@ import time
 from PIL import Image
 
 from app.config import Settings, get_settings
-from app.services.download.http_client import download_client
+from app.services.download.http_client import download_client, generate_link_headers
 from app.services.download.types import DownloadTarget, PreviewBatch, RemoteAlbum, RemoteBrowseResult, RemoteDetail, RemoteSearchResult, BrowseNavItem
 from app.services.download.wnacg_parse import (
     PAGE_SIZE,
@@ -38,7 +38,25 @@ _cover_url_cache: dict[str, str] = {}
 _preview_url_cache: dict[str, list[str]] = {}
 _preview_meta_cache: dict[str, dict[str, int]] = {}
 _effective_base_cache: dict[str, str] = {}
-_link_sign_lock = threading.Lock()
+_link_sign_sem: threading.Semaphore | None = None
+_link_sign_sem_size = 0
+
+
+def _link_sign_semaphore() -> threading.Semaphore:
+    global _link_sign_sem, _link_sign_sem_size
+    size = max(1, get_settings().download_concurrency)
+    if _link_sign_sem is None or _link_sign_sem_size != size:
+        _link_sign_sem = threading.Semaphore(size)
+        _link_sign_sem_size = size
+    return _link_sign_sem
+
+
+def _cdn_url_flags(url: str) -> tuple[str, bool, bool]:
+    from urllib.parse import parse_qs, urlparse
+
+    parsed = urlparse(url)
+    qs = parse_qs(parsed.query)
+    return parsed.netloc, "sign" in qs, "expiry" in qs
 
 
 def _slug(text: str) -> str:
@@ -105,67 +123,88 @@ class WnacgAdapter:
 
     def _live_resolve_download(self, album_id: str) -> DownloadTarget:
         referer_base = self._effective_base_url()
-        download_page = f"{referer_base}/download-index-aid-{album_id}.html"
         html = self._get_html(f"/download-index-aid-{album_id}.html")
         cfg = parse_download_page(html)
         url = self._fetch_signed_download_url(
+            album_id,
             cfg["worker_api"],
             cfg["file_key"],
             cfg["file_name"],
-            download_page,
             referer_base,
-            cfg["backup_url"],
         )
-        logger.info("wnacg download aid=%s url=%s", album_id, url[:80])
+        cdn_host, signed, has_expiry = _cdn_url_flags(url)
+        logger.info(
+            "wnacg download aid=%s worker=%s cdn_host=%s signed=%s expiry=%s url=%s",
+            album_id,
+            cfg["worker_api"].split("/")[2] if "://" in cfg["worker_api"] else cfg["worker_api"],
+            cdn_host,
+            signed,
+            has_expiry,
+            url[:120],
+        )
         return DownloadTarget(
             kind="archive",
             urls=[url],
             filename=cfg["file_name"],
-            referer=download_page,
+            referer=f"{referer_base}/",
             file_key=cfg["file_key"],
         )
 
     def _fetch_signed_download_url(
         self,
+        album_id: str,
         worker_api: str,
         file_key: str,
         file_name: str,
-        referer: str,
         origin: str,
-        backup_url: str,
     ) -> str:
-        headers = {
-            "Referer": referer,
-            "Origin": origin,
-            "Content-Type": "application/json",
-        }
+        headers = generate_link_headers(origin)
         last_err = ""
+        sem = _link_sign_semaphore()
         for attempt in range(3):
             try:
-                with _link_sign_lock:
+                sem.acquire()
+                try:
                     with download_client(self.settings) as client:
                         res = client.post(
                             worker_api,
                             json={"file_key": file_key, "file_name": file_name},
                             headers=headers,
                         )
+                finally:
+                    sem.release()
                 if res.status_code == 200:
                     data = res.json()
                     if data.get("success") and data.get("url"):
                         return str(data["url"])
                     last_err = str(data.get("msg") or "generate-link rejected")
-                    logger.warning("generate-link failed: %s", last_err)
+                    logger.warning(
+                        "generate-link rejected aid=%s worker=%s attempt=%s msg=%s",
+                        album_id,
+                        worker_api,
+                        attempt + 1,
+                        last_err,
+                    )
                 else:
                     last_err = f"HTTP {res.status_code}"
-                    logger.warning("generate-link HTTP %s", res.status_code)
+                    logger.warning(
+                        "generate-link HTTP %s aid=%s worker=%s attempt=%s",
+                        res.status_code,
+                        album_id,
+                        worker_api,
+                        attempt + 1,
+                    )
             except Exception as exc:
                 last_err = str(exc)
-                logger.warning("generate-link error (attempt %s): %s", attempt + 1, exc)
+                logger.warning(
+                    "generate-link error aid=%s worker=%s attempt=%s: %s",
+                    album_id,
+                    worker_api,
+                    attempt + 1,
+                    exc,
+                )
             if attempt < 2:
                 time.sleep(0.6 * (attempt + 1))
-        if backup_url:
-            logger.info("generate-link fallback to backup_url")
-            return backup_url
         raise ValueError(f"无法获取下载链接，请检查代理或稍后重试 ({last_err})")
 
     def fetch_cover_bytes(self, album_id: str) -> tuple[bytes, str]:

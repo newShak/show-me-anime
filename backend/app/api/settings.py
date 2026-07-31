@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 from app.config import Settings, get_settings, update_settings_json
 from app.constants import SCAN_FAILED
 from app.db.session import get_db
-from app.logging_config import set_log_level
+from app.logging_config import reconfigure_file_logging, set_log_level
 from app.schemas.settings import SettingsResponse, SettingsSaveResponse, SettingsUpdate, ThumbRebuildResponse
 from app.services.task_log import TASK_REBUILD_THUMBS, record_task
 from app.services.thumbnail import clear_thumbnail_cache
@@ -38,9 +38,23 @@ def save_settings(body: SettingsUpdate) -> SettingsSaveResponse:
     try:
         stop_gallery_watcher()
         settings = update_settings_json(updates)
-        if "log_level" in updates:
+        log_keys = {
+            "log_level",
+            "log_dir",
+            "log_file_enabled",
+            "log_file_max_bytes",
+            "log_file_retention_days",
+        }
+        if log_keys & updates.keys():
             applied = set_log_level(settings.log_level)
-            logger.info("log level applied level=%s", applied)
+            reconfigure_file_logging(
+                log_dir=settings.log_dir,
+                enabled=settings.log_file_enabled,
+                level=applied,
+                max_bytes=settings.log_file_max_bytes,
+                retention_days=settings.log_file_retention_days,
+            )
+            logger.info("log config applied level=%s dir=%s enabled=%s", applied, settings.log_dir, settings.log_file_enabled)
         start_gallery_watcher()
     except ValueError as exc:
         logger.warning("settings save failed error=%s", exc)

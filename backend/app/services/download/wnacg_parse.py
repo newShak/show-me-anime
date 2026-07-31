@@ -220,8 +220,6 @@ def parse_download_page(html: str) -> dict[str, str]:
     m_backup = _BACKUP_ZIP_RE.search(html)
     if m_backup:
         backup_url = abs_url("", m_backup.group(1))
-    elif file_key:
-        backup_url = f"https://dl1.wn01.download/{file_key.lstrip('/')}"
     return {
         "worker_api": worker_api,
         "file_key": file_key,

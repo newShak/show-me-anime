@@ -47,6 +47,20 @@ def test_parse_download_fixture():
     assert cfg["backup_url"].startswith("https://dl")
 
 
+def test_parse_download_no_synthetic_backup():
+    html = """
+    <script>
+    const CONFIG = {
+        WORKER_API: "https://d1.wcdn.date/api/generate-link",
+        FILE_KEY: "down/1/test.zip",
+        FILE_NAME: "test.zip"
+    };
+    </script>
+    """
+    cfg = parse_download_page(html)
+    assert cfg["backup_url"] == ""
+
+
 def test_parse_albums_pagination_fixture():
     html = (FIXTURES / "wnacg_search.html").read_text(encoding="utf-8")
     from app.services.download.wnacg_parse import albums_page_path, parse_albums_pagination, parse_albums_total

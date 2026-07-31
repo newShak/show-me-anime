@@ -23,6 +23,8 @@ def _reset_app_state(tmp_path, monkeypatch):
     monkeypatch.setenv("GALLERY_ROOT", str(gallery))
     monkeypatch.setenv("THUMB_DIR", str(thumbs))
     monkeypatch.setenv("DOWNLOAD_CACHE_DIR", str(tmp_path / "cache"))
+    monkeypatch.setenv("LOG_DIR", str(tmp_path / "logs"))
+    monkeypatch.setenv("LOG_FILE_ENABLED", "false")
     monkeypatch.setenv("DATABASE_URL", f"sqlite:///{db_path.as_posix()}")
     reload_settings()
     reset_engine()

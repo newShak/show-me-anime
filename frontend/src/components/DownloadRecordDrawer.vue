@@ -16,12 +16,17 @@
       :items="records.items.value"
       :total="records.total.value"
       :page="records.page.value"
-      :page-size="records.pageSize"
+      :page-size="records.pageSize.value"
+      :status-filter="records.statusFilter.value"
       :retrying-id="records.retryingId.value"
       :overwriting-id="records.overwritingId.value"
+      :deleting-id="records.deletingId.value"
       @page-change="records.onPageChange"
+      @page-size-change="records.onPageSizeChange"
+      @status-change="records.onStatusChange"
       @retry="records.onRetry"
       @overwrite="records.onOverwrite"
+      @delete="records.onDelete"
     />
   </el-drawer>
 
@@ -44,12 +49,17 @@
       :items="records.items.value"
       :total="records.total.value"
       :page="records.page.value"
-      :page-size="records.pageSize"
+      :page-size="records.pageSize.value"
+      :status-filter="records.statusFilter.value"
       :retrying-id="records.retryingId.value"
       :overwriting-id="records.overwritingId.value"
+      :deleting-id="records.deletingId.value"
       @page-change="records.onPageChange"
+      @page-size-change="records.onPageSizeChange"
+      @status-change="records.onStatusChange"
       @retry="records.onRetry"
       @overwrite="records.onOverwrite"
+      @delete="records.onDelete"
     />
   </el-dialog>
 </template>

@@ -9,6 +9,10 @@ export type Settings = {
   watch_debounce_seconds: number
   album_list_cache_ttl: number
   log_level: LogLevel
+  log_dir: string
+  log_file_enabled: boolean
+  log_file_max_bytes: number
+  log_file_retention_days: number
   recent_view_limit: number
   recent_added_limit: number
   download_proxy_enabled: boolean
@@ -33,6 +37,10 @@ export type SettingsUpdate = Partial<
     | 'watch_enabled'
     | 'watch_debounce_seconds'
     | 'log_level'
+    | 'log_dir'
+    | 'log_file_enabled'
+    | 'log_file_max_bytes'
+    | 'log_file_retention_days'
     | 'recent_view_limit'
     | 'recent_added_limit'
     | 'download_proxy_enabled'

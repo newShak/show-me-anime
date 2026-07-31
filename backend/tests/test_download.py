@@ -264,3 +264,61 @@ def test_resume_download_job_no_partial(client):
     res = client.post("/api/download/jobs/noresumable/retry")
     assert res.status_code == 200
     assert res.json()["status"] in {"pending", "running"}
+
+
+def test_download_records_filter_and_delete(client):
+    from app.db.session import SessionLocal, get_engine
+    from app.services.download import jobs as jobs_mod
+    from app.services.download.records import create_record
+    from app.services.download.types import DownloadJobState
+
+    db = SessionLocal(bind=get_engine())
+    try:
+        for i, st in enumerate(["done", "failed"]):
+            create_record(
+                db,
+                DownloadJobState(
+                    id=f"filter-{i}",
+                    source="wnacg",
+                    album_id=f"a{i}",
+                    title=f"Filter {st}",
+                    target_rel_path=f"imports/filter-{i}",
+                    status=st,
+                ),
+            )
+        create_record(
+            db,
+            DownloadJobState(
+                id="filter-run",
+                source="wnacg",
+                album_id="arun",
+                title="Filter running",
+                target_rel_path="imports/filter-run",
+                status="running",
+            ),
+        )
+    finally:
+        db.close()
+
+    filtered = client.get("/api/download/records", params={"status": "done", "pageSize": 100})
+    assert filtered.status_code == 200
+    assert all(r["status"] == "done" for r in filtered.json()["items"])
+    assert any(r["id"] == "filter-0" for r in filtered.json()["items"])
+
+    bad = client.get("/api/download/records", params={"status": "invalid"})
+    assert bad.status_code == 400
+
+    deleted = client.delete("/api/download/records/filter-0")
+    assert deleted.status_code == 204
+
+    all_rows = client.get("/api/download/records", params={"pageSize": 100}).json()["items"]
+    assert not any(r["id"] == "filter-0" for r in all_rows)
+
+    with jobs_mod._lock:
+        jobs_mod._running_ids.add("filter-run")
+    try:
+        blocked = client.delete("/api/download/records/filter-run")
+        assert blocked.status_code == 400
+    finally:
+        with jobs_mod._lock:
+            jobs_mod._running_ids.discard("filter-run")

@@ -8,11 +8,35 @@ from app.services.download.wnacg_parse import normalize_domain
 DEFAULT_HEADERS = {
     "User-Agent": (
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-        "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
+        "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/150.0.0.0 Safari/537.36"
     ),
     "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/*,*/*;q=0.8",
     "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8",
 }
+
+CORS_API_HEADERS = {
+    "Accept": "*/*",
+    "sec-ch-ua": '"Not;A=Brand";v="8", "Chromium";v="150", "Google Chrome";v="150"',
+    "sec-ch-ua-mobile": "?0",
+    "sec-ch-ua-platform": '"Windows"',
+    "sec-fetch-dest": "empty",
+    "sec-fetch-mode": "cors",
+    "sec-fetch-site": "cross-site",
+}
+
+
+def site_origin_headers(origin: str) -> dict[str, str]:
+    """跨站 API / CDN 请求用的 Origin + Referer（与浏览器 download 页一致）。"""
+    base = origin.rstrip("/")
+    return {"Origin": base, "Referer": f"{base}/"}
+
+
+def generate_link_headers(origin: str) -> dict[str, str]:
+    return {**CORS_API_HEADERS, **site_origin_headers(origin), "Content-Type": "application/json"}
+
+
+def cdn_download_headers(referer_origin: str) -> dict[str, str]:
+    return {**CORS_API_HEADERS, **site_origin_headers(referer_origin)}
 
 DEFAULT_API_DOMAIN = "www.wn07.ru"
 
@@ -32,7 +56,7 @@ def download_client(settings: Settings | None = None) -> httpx.Client:
     proxy = settings.download_proxy if settings.download_proxy_enabled else None
     return httpx.Client(
         proxy=proxy or None,
-        timeout=httpx.Timeout(60.0, connect=20.0),
+        timeout=httpx.Timeout(300.0, connect=20.0),
         follow_redirects=True,
         headers=DEFAULT_HEADERS,
     )

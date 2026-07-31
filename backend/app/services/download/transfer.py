@@ -2,7 +2,9 @@
 
 import json
 import logging
+import random
 import re
+import threading
 import time
 import zipfile
 from collections.abc import Callable
@@ -10,11 +12,25 @@ from pathlib import Path
 
 import httpx
 
+from app.config import get_settings
+from app.services.download.http_client import cdn_download_headers
+
 logger = logging.getLogger(__name__)
 
 RESUME_META = ".resume.json"
 ZIP_NAME = "_download.zip"
 _CHUNK = 256 * 1024
+_RETRYABLE_STATUS = {429, 502, 503, 504}
+_MAX_RETRIES = 4
+_cdn_sem: threading.Semaphore | None = None
+_cdn_sem_size = 0
+
+
+def _cdn_url_info(url: str) -> tuple[str, bool]:
+    from urllib.parse import parse_qs, urlparse
+
+    parsed = urlparse(url)
+    return parsed.netloc, "sign" in parse_qs(parsed.query)
 
 
 class SpeedLimiter:
@@ -87,6 +103,15 @@ def reset_partial_download(cache_dir: Path) -> None:
     clear_resume_meta(cache_dir)
 
 
+def _cdn_semaphore() -> threading.Semaphore:
+    global _cdn_sem, _cdn_sem_size
+    size = max(1, get_settings().download_concurrency)
+    if _cdn_sem is None or _cdn_sem_size != size:
+        _cdn_sem = threading.Semaphore(size)
+        _cdn_sem_size = size
+    return _cdn_sem
+
+
 def download_file_resumable(
     client: httpx.Client,
     url: str,
@@ -96,7 +121,53 @@ def download_file_resumable(
     on_progress: Callable[[int, int | None], None] | None = None,
     speed_limit_kbps: int = 0,
 ) -> int:
-    """下载到 dest，支持断点续传。返回最终文件大小。"""
+    """下载到 dest，支持断点续传。CDN 限并发 + 错开启动 + 503 重试。"""
+    last_err: Exception | None = None
+    for attempt in range(_MAX_RETRIES):
+        try:
+            if attempt == 0:
+                time.sleep(random.uniform(0.3, 2.0))
+            with _cdn_semaphore():
+                return _download_file_resumable_once(
+                    client, url, referer, dest, file_key, on_progress, speed_limit_kbps
+                )
+        except httpx.HTTPStatusError as exc:
+            last_err = exc
+            code = exc.response.status_code
+            if code not in _RETRYABLE_STATUS or attempt >= _MAX_RETRIES - 1:
+                raise
+            host, signed = _cdn_url_info(url)
+            logger.warning(
+                "cdn download HTTP %s attempt %s/%s host=%s signed=%s url=%s",
+                code,
+                attempt + 1,
+                _MAX_RETRIES,
+                host,
+                signed,
+                url[:120],
+            )
+        except httpx.TransportError as exc:
+            last_err = exc
+            if attempt >= _MAX_RETRIES - 1:
+                raise
+            logger.warning("cdn download transport error attempt %s/%s: %s", attempt + 1, _MAX_RETRIES, exc)
+        if attempt < _MAX_RETRIES - 1:
+            time.sleep(1.5 * (attempt + 1))
+    if last_err:
+        raise last_err
+    raise RuntimeError("download failed")
+
+
+def _download_file_resumable_once(
+    client: httpx.Client,
+    url: str,
+    referer: str | None,
+    dest: Path,
+    file_key: str | None,
+    on_progress: Callable[[int, int | None], None] | None = None,
+    speed_limit_kbps: int = 0,
+) -> int:
+    """单次 CDN 下载（无重试）。"""
     limiter = SpeedLimiter(speed_limit_kbps)
     dest.parent.mkdir(parents=True, exist_ok=True)
     partial = dest.stat().st_size if dest.is_file() else 0
@@ -106,16 +177,15 @@ def download_file_resumable(
         reset_partial_download(dest.parent)
         partial = 0
 
-    headers: dict[str, str] = {}
-    if referer:
-        headers["Referer"] = referer
+    headers: dict[str, str] = cdn_download_headers(referer.rstrip("/")) if referer else {}
+    headers["Accept-Encoding"] = "identity"
     if partial > 0:
         headers["Range"] = f"bytes={partial}-"
 
     with client.stream("GET", url, headers=headers, follow_redirects=True) as res:
         if partial > 0 and res.status_code in {416, 404}:
             reset_partial_download(dest.parent)
-            return download_file_resumable(
+            return _download_file_resumable_once(
                 client, url, referer, dest, file_key, on_progress, speed_limit_kbps
             )
 

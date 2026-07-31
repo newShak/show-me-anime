@@ -1,15 +1,26 @@
 import { onUnmounted, ref, watch, type Ref } from 'vue'
-import { ElMessage } from 'element-plus'
-import { fetchDownloadRecords, overwriteDownloadJob, retryDownloadJob } from '@/api/download'
+import { ElMessage, ElMessageBox } from 'element-plus'
+import {
+  deleteDownloadRecord,
+  fetchDownloadRecords,
+  overwriteDownloadJob,
+  retryDownloadJob,
+} from '@/api/download'
+import { apiErrorMessage } from '@/api/http'
 import type { DownloadRecord } from '@/types/download'
 
-export const useDownloadRecords = (active: Ref<boolean>, pageSize = 20) => {
+export type DownloadRecordStatusFilter = '' | 'pending' | 'running' | 'done' | 'failed'
+
+export const useDownloadRecords = (active: Ref<boolean>) => {
   const loading = ref(false)
   const items = ref<DownloadRecord[]>([])
   const total = ref(0)
   const page = ref(1)
+  const pageSize = ref(20)
+  const statusFilter = ref<DownloadRecordStatusFilter>('')
   const retryingId = ref<string | null>(null)
   const overwritingId = ref<string | null>(null)
+  const deletingId = ref<string | null>(null)
 
   let pollTimer: ReturnType<typeof setInterval> | null = null
 
@@ -35,7 +46,11 @@ export const useDownloadRecords = (active: Ref<boolean>, pageSize = 20) => {
   const refresh = async (showLoading: boolean) => {
     if (showLoading) loading.value = true
     try {
-      const { data } = await fetchDownloadRecords(page.value, pageSize)
+      const { data } = await fetchDownloadRecords({
+        page: page.value,
+        pageSize: pageSize.value,
+        status: statusFilter.value || undefined,
+      })
       items.value = data.items
       total.value = data.total
       if (hasActive()) startPoll()
@@ -48,10 +63,24 @@ export const useDownloadRecords = (active: Ref<boolean>, pageSize = 20) => {
   const reset = () => {
     stopPoll()
     page.value = 1
+    statusFilter.value = ''
+    pageSize.value = 20
   }
 
   const onPageChange = (p: number) => {
     page.value = p
+    refresh(true)
+  }
+
+  const onPageSizeChange = (size: number) => {
+    pageSize.value = size
+    page.value = 1
+    refresh(true)
+  }
+
+  const onStatusChange = (status: DownloadRecordStatusFilter) => {
+    statusFilter.value = status
+    page.value = 1
     refresh(true)
   }
 
@@ -83,6 +112,29 @@ export const useDownloadRecords = (active: Ref<boolean>, pageSize = 20) => {
     }
   }
 
+  const onDelete = async (row: DownloadRecord) => {
+    try {
+      await ElMessageBox.confirm(`确定删除「${row.title}」的下载记录？`, '删除记录', {
+        type: 'warning',
+        confirmButtonText: '删除',
+        cancelButtonText: '取消',
+      })
+    } catch {
+      return
+    }
+    deletingId.value = row.id
+    try {
+      await deleteDownloadRecord(row.id)
+      ElMessage.success('已删除')
+      if (items.value.length === 1 && page.value > 1) page.value -= 1
+      await refresh(false)
+    } catch (err) {
+      ElMessage.error(apiErrorMessage(err, '删除失败'))
+    } finally {
+      deletingId.value = null
+    }
+  }
+
   watch(active, (v) => {
     if (v) refresh(true)
     else stopPoll()
@@ -96,12 +148,17 @@ export const useDownloadRecords = (active: Ref<boolean>, pageSize = 20) => {
     total,
     page,
     pageSize,
+    statusFilter,
     retryingId,
     overwritingId,
+    deletingId,
     refresh,
     reset,
     onPageChange,
+    onPageSizeChange,
+    onStatusChange,
     onRetry,
     onOverwrite,
+    onDelete,
   }
 }

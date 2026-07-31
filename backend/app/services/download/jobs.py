@@ -270,6 +270,33 @@ def resume_download_job(job_id: str) -> DownloadJobState:
     return retry_download_job(job_id)
 
 
+def delete_download_record(job_id: str) -> None:
+    """删除下载记录并清理缓存；进行中的任务不可删。"""
+    if is_download_job_running(job_id):
+        raise ValueError("job is running")
+    job = get_job(job_id)
+    if job is None:
+        raise ValueError("job not found")
+    if job.status in {"pending", "running"}:
+        raise ValueError("job is running")
+
+    settings = get_settings()
+    cleanup_job_cache(job_cache_dir(settings, job_id))
+    with _lock:
+        _jobs.pop(job_id, None)
+        _running_ids.discard(job_id)
+        _force_overwrite.discard(job_id)
+
+    from app.services.download.records import delete_record
+
+    db = SessionLocal(bind=get_engine())
+    try:
+        if not delete_record(db, job_id):
+            raise ValueError("job not found")
+    finally:
+        db.close()
+
+
 def _take_force_overwrite(job_id: str) -> bool:
     with _lock:
         if job_id in _force_overwrite:

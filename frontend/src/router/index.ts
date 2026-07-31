@@ -62,6 +62,11 @@ const router = createRouter({
           component: () => import('@/views/admin/tasks.vue'),
           meta: { title: '任务执行记录' },
         },
+        {
+          path: 'logs',
+          component: () => import('@/views/admin/logs.vue'),
+          meta: { title: '应用日志' },
+        },
       ],
     },
   ],

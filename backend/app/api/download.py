@@ -29,6 +29,7 @@ from app.services.download.jobs import (
     create_download_job,
     create_download_jobs_batch,
     default_target_rel_path,
+    delete_download_record,
     get_job,
     is_download_job_running,
     overwrite_download_job,
@@ -43,6 +44,8 @@ from app.services.download.transfer import is_job_resumable
 from sqlalchemy.orm import Session
 
 router = APIRouter(prefix="/download", tags=["download"])
+
+_RECORD_STATUS = frozenset({"pending", "running", "done", "failed"})
 
 
 def _job_response(job) -> DownloadJobResponse:
@@ -99,11 +102,14 @@ def download_options(settings: Settings = Depends(get_settings)) -> DownloadOpti
 def download_records(
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=20, ge=1, le=100, alias="pageSize"),
+    status: str | None = Query(default=None),
     db: Session = Depends(get_db),
     settings: Settings = Depends(get_settings),
 ) -> DownloadRecordListResponse:
+    if status is not None and status not in _RECORD_STATUS:
+        raise HTTPException(status_code=400, detail="invalid status")
     reconcile_stale_download_jobs(db)
-    rows, total = list_records(db, page, page_size)
+    rows, total = list_records(db, page, page_size, status)
     return DownloadRecordListResponse(
         items=[
             DownloadRecordResponse(
@@ -133,6 +139,15 @@ def download_records(
         page=page,
         page_size=page_size,
     )
+
+
+@router.delete("/records/{job_id}", status_code=204)
+def remove_download_record(job_id: str) -> Response:
+    try:
+        delete_download_record(job_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return Response(status_code=204)
 
 
 @router.get("/search", response_model=RemoteSearchResponse)

@@ -46,11 +46,27 @@ def get_record(db: Session, job_id: str) -> DownloadRecord | None:
     return db.get(DownloadRecord, job_id)
 
 
-def list_records(db: Session, page: int = 1, page_size: int = 20) -> tuple[list[DownloadRecord], int]:
+def list_records(
+    db: Session,
+    page: int = 1,
+    page_size: int = 20,
+    status: str | None = None,
+) -> tuple[list[DownloadRecord], int]:
     q = db.query(DownloadRecord).order_by(DownloadRecord.created_at.desc())
+    if status:
+        q = q.filter(DownloadRecord.status == status)
     total = q.count()
     rows = q.offset((page - 1) * page_size).limit(page_size).all()
     return rows, total
+
+
+def delete_record(db: Session, job_id: str) -> bool:
+    row = db.get(DownloadRecord, job_id)
+    if row is None:
+        return False
+    db.delete(row)
+    db.commit()
+    return True
 
 
 def record_to_job(row: DownloadRecord) -> DownloadJobState:

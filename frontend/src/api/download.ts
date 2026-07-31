@@ -19,8 +19,20 @@ export const fetchDownloadSources = () => http.get<DownloadSource[]>('/download/
 
 export const fetchDownloadOptions = () => http.get<DownloadOptions>('/download/options')
 
-export const fetchDownloadRecords = (page = 1, pageSize = 20) =>
-  http.get<DownloadRecordList>('/download/records', { params: { page, pageSize } })
+export const fetchDownloadRecords = (params: {
+  page?: number
+  pageSize?: number
+  status?: string
+} = {}) =>
+  http.get<DownloadRecordList>('/download/records', {
+    params: {
+      page: params.page ?? 1,
+      pageSize: params.pageSize ?? 20,
+      ...(params.status ? { status: params.status } : {}),
+    },
+  })
+
+export const deleteDownloadRecord = (id: string) => http.delete(`/download/records/${id}`)
 
 export const browseRemoteAlbums = (params: {
   page?: number

@@ -19,6 +19,10 @@
           <el-icon><List /></el-icon>
           <span>任务执行记录</span>
         </el-menu-item>
+        <el-menu-item index="/admin/logs">
+          <el-icon><Document /></el-icon>
+          <span>应用日志</span>
+        </el-menu-item>
       </el-menu>
     </aside>
 
@@ -40,7 +44,7 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import { useRoute } from 'vue-router'
-import { CollectionTag, Download, List, Refresh, Setting } from '@element-plus/icons-vue'
+import { CollectionTag, Document, Download, List, Refresh, Setting } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 
 const route = useRoute()
