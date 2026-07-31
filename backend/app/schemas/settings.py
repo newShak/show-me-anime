@@ -20,6 +20,15 @@ class SettingsResponse(BaseModel):
     recent_added_limit: int = 20
     host: str
     port: int
+    download_proxy_enabled: bool = False
+    download_proxy: str = ""
+    download_default_subdir: str = "imports/wnacg"
+    download_use_mock: bool = True
+    download_api_domain: str = "www.wn07.ru"
+    download_preview_batch_size: int = 10
+    download_concurrency: int = 2
+    download_speed_limit_kbps: int = 0
+    download_cache_dir: str = "/data/cache"
 
 
 class SettingsUpdate(BaseModel):
@@ -31,6 +40,15 @@ class SettingsUpdate(BaseModel):
     log_level: LogLevel | None = None
     recent_view_limit: int | None = Field(default=None, ge=1, le=100)
     recent_added_limit: int | None = Field(default=None, ge=1, le=100)
+    download_proxy_enabled: bool | None = None
+    download_proxy: str | None = None
+    download_default_subdir: str | None = None
+    download_use_mock: bool | None = None
+    download_api_domain: str | None = None
+    download_preview_batch_size: int | None = Field(default=None, ge=1, le=50)
+    download_concurrency: int | None = Field(default=None, ge=1, le=10)
+    download_speed_limit_kbps: int | None = Field(default=None, ge=0, le=102400)
+    download_cache_dir: str | None = None
 
 
 class SettingsSaveResponse(SettingsResponse):

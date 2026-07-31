@@ -11,10 +11,12 @@ services:
     environment:
       GALLERY_ROOT: /data/gallery
       THUMB_DIR: /data/thumbs
+      DOWNLOAD_CACHE_DIR: /data/cache
       DATABASE_URL: sqlite:////app/data/gallery.db
       WATCH_ENABLED: "true"
     volumes:
       - ./gallery:/data/gallery
       - ./data/thumbs:/data/thumbs
+      - ./data/cache:/data/cache
       - ./data:/app/data
     restart: unless-stopped

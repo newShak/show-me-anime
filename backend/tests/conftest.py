@@ -22,6 +22,7 @@ def _reset_app_state(tmp_path, monkeypatch):
     monkeypatch.setenv("WATCH_ENABLED", "false")
     monkeypatch.setenv("GALLERY_ROOT", str(gallery))
     monkeypatch.setenv("THUMB_DIR", str(thumbs))
+    monkeypatch.setenv("DOWNLOAD_CACHE_DIR", str(tmp_path / "cache"))
     monkeypatch.setenv("DATABASE_URL", f"sqlite:///{db_path.as_posix()}")
     reload_settings()
     reset_engine()

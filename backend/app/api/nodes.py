@@ -20,6 +20,8 @@ from app.schemas.node import (
     ImageListResponse,
     NodeBatchDelete,
     NodeBatchDeleteResponse,
+    NodeMkdir,
+    NodeMkdirResponse,
     NodeMove,
     NodeMoveResponse,
     NodeResponse,
@@ -36,6 +38,7 @@ from app.services.cover_candidates import (
 from app.services.media import ImageSource, resolve_cover_source, resolve_image_source
 from app.services.node_admin import sync_node_search_index
 from app.services.node_delete import delete_nodes
+from app.services.node_mkdir import mkdir_node
 from app.services.node_move import move_nodes
 from app.services.node_sort import SORT_FIELDS, SORT_ORDERS, sort_nodes
 from app.services.thumbnail import get_or_create_thumbnail, get_or_create_thumbnail_bytes
@@ -253,6 +256,21 @@ def batch_move_nodes(
     moved, errors = move_nodes(db, body.ids, body.target_parent_id)
     reader.invalidate()
     return NodeMoveResponse(moved=moved, errors=errors)
+
+
+@router.post("/nodes/mkdir", response_model=NodeMkdirResponse)
+def create_node_dir(
+    body: NodeMkdir,
+    db: Session = Depends(get_db),
+    reader: AlbumReader = Depends(get_album_reader),
+    settings: Settings = Depends(get_settings),
+) -> NodeMkdirResponse:
+    try:
+        node, _path = mkdir_node(db, settings, body.parent_id, body.name)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    reader.invalidate()
+    return NodeMkdirResponse(id=node.id, path=node.path, name=node.name)
 
 
 @router.get("/nodes/{node_id}/cover/candidates", response_model=CoverCandidateListResponse)

@@ -11,6 +11,15 @@ export type Settings = {
   log_level: LogLevel
   recent_view_limit: number
   recent_added_limit: number
+  download_proxy_enabled: boolean
+  download_proxy: string
+  download_default_subdir: string
+  download_use_mock: boolean
+  download_api_domain: string
+  download_preview_batch_size: number
+  download_concurrency: number
+  download_speed_limit_kbps: number
+  download_cache_dir: string
   host: string
   port: number
 }
@@ -26,6 +35,15 @@ export type SettingsUpdate = Partial<
     | 'log_level'
     | 'recent_view_limit'
     | 'recent_added_limit'
+    | 'download_proxy_enabled'
+    | 'download_proxy'
+    | 'download_default_subdir'
+    | 'download_use_mock'
+    | 'download_api_domain'
+    | 'download_preview_batch_size'
+    | 'download_concurrency'
+    | 'download_speed_limit_kbps'
+    | 'download_cache_dir'
   >
 >
 

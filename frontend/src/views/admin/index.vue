@@ -7,6 +7,10 @@
           <el-icon><Setting /></el-icon>
           <span>配置</span>
         </el-menu-item>
+        <el-menu-item index="/admin/download">
+          <el-icon><Download /></el-icon>
+          <span>下载配置</span>
+        </el-menu-item>
         <el-menu-item index="/admin/tags">
           <el-icon><CollectionTag /></el-icon>
           <span>标签</span>
@@ -36,7 +40,7 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import { useRoute } from 'vue-router'
-import { CollectionTag, List, Refresh, Setting } from '@element-plus/icons-vue'
+import { CollectionTag, Download, List, Refresh, Setting } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 
 const route = useRoute()

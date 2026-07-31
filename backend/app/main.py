@@ -10,11 +10,12 @@ from fastapi.staticfiles import StaticFiles
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.responses import FileResponse
 
-from app.api import health, library, nodes, scan, search, settings as settings_api, tags, tasks
+from app.api import download, health, library, nodes, scan, search, settings as settings_api, tags, tasks
 from app.config import get_settings
 from app.db.session import SessionLocal, get_engine, init_db
 from app.logging_config import set_log_level, setup_logging
 from app.services.scan_runner import reconcile_stale_scan_jobs
+from app.services.download.jobs import reconcile_stale_download_jobs
 from app.services.watcher import start_gallery_watcher, stop_gallery_watcher
 
 setup_logging(get_settings().log_level)
@@ -57,6 +58,7 @@ async def lifespan(_: FastAPI):
     db = SessionLocal(bind=get_engine())
     try:
         reconcile_stale_scan_jobs(db)
+        reconcile_stale_download_jobs(db)
     finally:
         db.close()
     start_gallery_watcher()
@@ -83,6 +85,7 @@ app.include_router(scan.router, prefix="/api")
 app.include_router(search.router, prefix="/api")
 app.include_router(tags.router, prefix="/api")
 app.include_router(tasks.router, prefix="/api")
+app.include_router(download.router, prefix="/api")
 
 if STATIC_DIR.is_dir():
     app.mount("/", SPAStaticFiles(directory=STATIC_DIR, html=True), name="spa")

@@ -3,10 +3,11 @@
 #   docker compose -f docker-compose.hub.yml up -d
 #
 # 宿主机目录说明（按需修改下方 volumes 路径）：
-#   画廊     → GALLERY_ROOT      容器 /data/gallery
-#   缩略图   → THUMB_DIR         容器 /data/thumbs
-#   数据库   → DATABASE_URL      容器 /app/data/gallery.db
-#   设置     → settings.json     容器 /app/data/settings.json
+#   画廊       → GALLERY_ROOT         容器 /data/gallery
+#   缩略图     → THUMB_DIR            容器 /data/thumbs
+#   下载缓存   → DOWNLOAD_CACHE_DIR   容器 /data/cache（未完成下载的 zip / 临时文件）
+#   数据库     → DATABASE_URL         容器 /app/data/gallery.db
+#   设置       → settings.json        容器 /app/data/settings.json
 
 services:
   show-me-anime:
@@ -17,6 +18,7 @@ services:
     environment:
       GALLERY_ROOT: /data/gallery
       THUMB_DIR: /data/thumbs
+      DOWNLOAD_CACHE_DIR: /data/cache
       DATABASE_URL: sqlite:////app/data/gallery.db
       WATCH_ENABLED: "true"
     volumes:
@@ -24,6 +26,8 @@ services:
       - ./gallery:/data/gallery
       # 缩略图 — 改为你的宿主机路径
       - ./data/thumbs:/data/thumbs
+      # 外站下载临时缓存（中断任务可在此目录清理）— 改为你的宿主机路径
+      - ./data/cache:/data/cache
       # 数据库 gallery.db + 设置 settings.json — 改为你的宿主机路径
       - ./data:/app/data
     restart: unless-stopped

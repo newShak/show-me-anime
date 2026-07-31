@@ -29,10 +29,11 @@ RUN pip install -r /app/backend/requirements-prod.txt
 COPY backend/ /app/backend/
 COPY --from=frontend-build /app/frontend/dist /app/frontend/dist
 
-RUN mkdir -p /app/data/thumbs /data/gallery
+RUN mkdir -p /app/data/thumbs /data/gallery /data/cache
 
 ENV GALLERY_ROOT=/data/gallery \
     THUMB_DIR=/app/data/thumbs \
+    DOWNLOAD_CACHE_DIR=/data/cache \
     DATABASE_URL=sqlite:////app/data/gallery.db \
     HOST=0.0.0.0 \
     PORT=8000

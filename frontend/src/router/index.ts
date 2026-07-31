@@ -36,6 +36,7 @@ const router = createRouter({
     { path: '/browse/:nodeId', component: () => import('@/views/browse/index.vue') },
     { path: '/reader/:nodeId', component: () => import('@/views/reader/index.vue') },
     { path: '/search', component: () => import('@/views/search/index.vue') },
+    { path: '/download', component: () => import('@/views/download/index.vue') },
     {
       path: '/admin',
       component: () => import('@/views/admin/index.vue'),
@@ -45,6 +46,11 @@ const router = createRouter({
           path: 'settings',
           component: () => import('@/views/admin/settings.vue'),
           meta: { title: '配置' },
+        },
+        {
+          path: 'download',
+          component: () => import('@/views/admin/download.vue'),
+          meta: { title: '下载配置' },
         },
         {
           path: 'tags',

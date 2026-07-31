@@ -1,6 +1,6 @@
 import { http } from './http'
 import type { NodeSort } from '@/composables/useNodeSort'
-import type { CoverCandidateList, ImageList, NodeBatchDeleteResult, NodeItem, NodeMovePayload, NodeMoveResult, NodeUpdate, RecentNodesResult } from '@/types/node'
+import type { CoverCandidateList, ImageList, NodeBatchDeleteResult, NodeItem, NodeMkdirPayload, NodeMkdirResult, NodeMovePayload, NodeMoveResult, NodeUpdate, RecentNodesResult } from '@/types/node'
 import type { ReadProgress } from '@/types/progress'
 
 export const fetchNodes = (parentId?: number, sort?: NodeSort) =>
@@ -62,3 +62,6 @@ export const deleteNodes = (ids: number[]) =>
 
 export const moveNodes = (body: NodeMovePayload) =>
   http.post<NodeMoveResult>('/nodes/move', body)
+
+export const createNodeDir = (body: NodeMkdirPayload) =>
+  http.post<NodeMkdirResult>('/nodes/mkdir', body)

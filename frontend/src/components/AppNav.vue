@@ -13,6 +13,7 @@
       <div class="links">
         <router-link to="/" exact-active-class="active">首页</router-link>
         <a :class="{ active: isGallery }" href="#" @click.prevent="$router.push('/browse')">画廊</a>
+        <router-link to="/download" active-class="active">下载</router-link>
         <a :class="{ active: isAdmin }" href="#" @click.prevent="$router.push('/admin/settings')">管理</a>
       </div>
       <el-switch

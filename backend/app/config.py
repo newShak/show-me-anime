@@ -40,6 +40,15 @@ class Settings(BaseSettings):
     recent_added_limit: int = Field(default=20, ge=1, le=100)
     host: str = Field(default="0.0.0.0")
     port: int = Field(default=8000)
+    download_proxy_enabled: bool = Field(default=False)
+    download_proxy: str | None = Field(default=None)
+    download_default_subdir: str = Field(default="imports/wnacg")
+    download_use_mock: bool = Field(default=True)
+    download_api_domain: str = Field(default="www.wn07.ru")
+    download_preview_batch_size: int = Field(default=10, ge=1, le=50)
+    download_concurrency: int = Field(default=2, ge=1, le=10)
+    download_speed_limit_kbps: int = Field(default=0, ge=0, le=102400)
+    download_cache_dir: Path = Field(default=Path("/data/cache"))
 
     @field_validator("log_level")
     @classmethod
@@ -52,12 +61,14 @@ class Settings(BaseSettings):
         """相对路径转绝对路径，并确保必要目录存在。"""
         self.gallery_root = _to_abs(self.gallery_root)
         self.thumb_dir = _to_abs(self.thumb_dir)
+        self.download_cache_dir = _to_abs(self.download_cache_dir)
         if self.gallery_root.exists() and not self.gallery_root.is_dir():
             raise ValueError(f"画廊根目录不可用: {self.gallery_root}")
         if self.thumb_dir.exists() and not self.thumb_dir.is_dir():
             raise ValueError(f"缩略图目录不可用: {self.thumb_dir}")
         self.gallery_root.mkdir(parents=True, exist_ok=True)
         self.thumb_dir.mkdir(parents=True, exist_ok=True)
+        self.download_cache_dir.mkdir(parents=True, exist_ok=True)
         if not self.gallery_root.is_dir():
             raise ValueError(f"画廊根目录不可用: {self.gallery_root}")
         if not self.thumb_dir.is_dir():
@@ -78,6 +89,15 @@ class Settings(BaseSettings):
             "recent_added_limit": self.recent_added_limit,
             "host": self.host,
             "port": self.port,
+            "download_proxy_enabled": self.download_proxy_enabled,
+            "download_proxy": self.download_proxy or "",
+            "download_default_subdir": self.download_default_subdir,
+            "download_use_mock": self.download_use_mock,
+            "download_api_domain": self.download_api_domain,
+            "download_preview_batch_size": self.download_preview_batch_size,
+            "download_concurrency": self.download_concurrency,
+            "download_speed_limit_kbps": self.download_speed_limit_kbps,
+            "download_cache_dir": str(self.download_cache_dir),
         }
 
 

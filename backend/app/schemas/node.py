@@ -72,3 +72,14 @@ class NodeMove(BaseModel):
 class NodeMoveResponse(BaseModel):
     moved: int
     errors: list[str] = []
+
+
+class NodeMkdir(BaseModel):
+    parent_id: int | None = None
+    name: str = Field(min_length=1, max_length=120)
+
+
+class NodeMkdirResponse(BaseModel):
+    id: int
+    path: str
+    name: str

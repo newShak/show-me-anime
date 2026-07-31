@@ -82,6 +82,22 @@ class ScanJob(Base):
     message: Mapped[str | None] = mapped_column(Text, nullable=True)
 
 
+class DownloadRecord(Base):
+    __tablename__ = "download_records"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    source: Mapped[str] = mapped_column(String, nullable=False)
+    album_id: Mapped[str] = mapped_column(String, nullable=False)
+    title: Mapped[str] = mapped_column(String, nullable=False)
+    target_rel_path: Mapped[str] = mapped_column(String, nullable=False)
+    status: Mapped[str] = mapped_column(String, nullable=False, default="pending")
+    progress: Mapped[int] = mapped_column(Integer, default=0)
+    message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    saved_files: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[float] = mapped_column(Float, default=lambda: time.time())
+    finished_at: Mapped[float | None] = mapped_column(Float, nullable=True)
+
+
 class TaskLog(Base):
     __tablename__ = "task_logs"
 

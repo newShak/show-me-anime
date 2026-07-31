@@ -53,6 +53,17 @@ export type NodeMovePayload = {
   target_parent_id: number | null
 }
 
+export type NodeMkdirPayload = {
+  parent_id?: number | null
+  name: string
+}
+
+export type NodeMkdirResult = {
+  id: number
+  path: string
+  name: string
+}
+
 export type NodeMoveResult = {
   moved: number
   errors: string[]
