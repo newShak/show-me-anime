@@ -113,6 +113,41 @@ def test_download_options(client):
     assert body["concurrency"] >= 1
 
 
+def test_download_job_skips_existing_path(client, gallery):
+    existing = gallery / "mock-import" / "exists-album"
+    existing.mkdir(parents=True)
+    (existing / "001.jpg").write_bytes(b"x")
+    (existing / "002.jpg").write_bytes(b"x")
+    (existing / "003.jpg").write_bytes(b"x")
+
+    res = client.post(
+        "/api/download/jobs",
+        json={
+            "source": "wnacg",
+            "album_id": "album-dup",
+            "title": "重复路径",
+            "target_rel_path": "mock-import/exists-album",
+        },
+    )
+    assert res.status_code == 200
+    body = res.json()
+    assert body["target_existed"] is True
+
+    import time
+
+    job = body
+    for _ in range(50):
+        job = client.get(f"/api/download/jobs/{job['id']}").json()
+        if job["status"] in {"done", "failed"}:
+            break
+        time.sleep(0.1)
+
+    assert job["status"] == "done"
+    assert job["skipped_files"] == 3
+    assert job["saved_files"] == 0
+    assert "跳过" in (job["message"] or "")
+
+
 def test_download_jobs_batch(client):
     search = client.get("/api/download/search", params={"q": "batch"}).json()
     picked = search["items"][:2]
@@ -226,5 +261,6 @@ def test_resume_download_job_no_partial(client):
     finally:
         db.close()
 
-    res = client.post("/api/download/jobs/noresumable/resume")
-    assert res.status_code == 400
+    res = client.post("/api/download/jobs/noresumable/retry")
+    assert res.status_code == 200
+    assert res.json()["status"] in {"pending", "running"}

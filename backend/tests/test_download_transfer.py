@@ -63,8 +63,10 @@ def test_try_extract_or_none(tmp_path):
     zip_path = cache / ZIP_NAME
     with zipfile.ZipFile(zip_path, "w") as zf:
         zf.writestr("001.jpg", b"fake-image")
-    assert try_extract_or_none(zip_path, cache) == 1
+    assert try_extract_or_none(zip_path, cache) == (1, 0)
     assert (cache / "001.jpg").is_file()
+
+    assert try_extract_or_none(zip_path, cache, overwrite=False) == (0, 1)
 
     zip_path.write_bytes(b"not-a-zip")
     assert try_extract_or_none(zip_path, cache) is None

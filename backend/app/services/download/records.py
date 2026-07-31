@@ -20,6 +20,8 @@ def create_record(db: Session, job: DownloadJobState) -> None:
         progress=job.progress,
         message=job.message,
         saved_files=job.saved_files,
+        skipped_files=job.skipped_files,
+        target_existed=job.target_existed,
         created_at=now,
         finished_at=None,
     )
@@ -62,4 +64,6 @@ def record_to_job(row: DownloadRecord) -> DownloadJobState:
         progress=row.progress,
         message=row.message,
         saved_files=row.saved_files,
+        skipped_files=row.skipped_files,
+        target_existed=row.target_existed,
     )

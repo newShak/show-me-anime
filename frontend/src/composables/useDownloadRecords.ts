@@ -1,6 +1,6 @@
 import { onUnmounted, ref, watch, type Ref } from 'vue'
 import { ElMessage } from 'element-plus'
-import { fetchDownloadRecords, resumeDownloadJob } from '@/api/download'
+import { fetchDownloadRecords, overwriteDownloadJob, retryDownloadJob } from '@/api/download'
 import type { DownloadRecord } from '@/types/download'
 
 export const useDownloadRecords = (active: Ref<boolean>, pageSize = 20) => {
@@ -8,7 +8,8 @@ export const useDownloadRecords = (active: Ref<boolean>, pageSize = 20) => {
   const items = ref<DownloadRecord[]>([])
   const total = ref(0)
   const page = ref(1)
-  const resumingId = ref<string | null>(null)
+  const retryingId = ref<string | null>(null)
+  const overwritingId = ref<string | null>(null)
 
   let pollTimer: ReturnType<typeof setInterval> | null = null
 
@@ -54,17 +55,31 @@ export const useDownloadRecords = (active: Ref<boolean>, pageSize = 20) => {
     refresh(true)
   }
 
-  const onResume = async (row: DownloadRecord) => {
-    resumingId.value = row.id
+  const onRetry = async (row: DownloadRecord) => {
+    retryingId.value = row.id
     try {
-      await resumeDownloadJob(row.id)
-      ElMessage.success('已开始续传')
+      await retryDownloadJob(row.id)
+      ElMessage.success('已开始重试')
       await refresh(false)
       startPoll()
     } catch {
-      ElMessage.error('续传失败')
+      ElMessage.error('重试失败')
     } finally {
-      resumingId.value = null
+      retryingId.value = null
+    }
+  }
+
+  const onOverwrite = async (row: DownloadRecord) => {
+    overwritingId.value = row.id
+    try {
+      await overwriteDownloadJob(row.id)
+      ElMessage.success('已开始强制覆盖')
+      await refresh(false)
+      startPoll()
+    } catch {
+      ElMessage.error('强制覆盖失败')
+    } finally {
+      overwritingId.value = null
     }
   }
 
@@ -81,10 +96,12 @@ export const useDownloadRecords = (active: Ref<boolean>, pageSize = 20) => {
     total,
     page,
     pageSize,
-    resumingId,
+    retryingId,
+    overwritingId,
     refresh,
     reset,
     onPageChange,
-    onResume,
+    onRetry,
+    onOverwrite,
   }
 }

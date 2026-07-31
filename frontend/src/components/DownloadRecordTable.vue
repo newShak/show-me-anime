@@ -4,9 +4,13 @@
       <el-table-column label="标题" :min-width="isFullscreen ? 200 : 120" show-overflow-tooltip>
         <template #default="{ row }">{{ row.title }}</template>
       </el-table-column>
-      <el-table-column label="状态" :width="isFullscreen ? 88 : 72" align="center">
+      <el-table-column label="状态" :width="isFullscreen ? 100 : 88" align="center">
         <template #default="{ row }">
           <el-tag :type="statusType(row.status)" size="small">{{ statusLabel(row.status) }}</el-tag>
+          <el-tag v-if="row.target_existed" type="info" size="small" class="skip-tag">路径已存在</el-tag>
+          <el-tag v-if="row.skipped_files > 0" type="warning" size="small" class="skip-tag">
+            跳过 {{ row.skipped_files }}
+          </el-tag>
         </template>
       </el-table-column>
       <el-table-column label="进度" :min-width="isFullscreen ? 240 : 180">
@@ -27,17 +31,27 @@
       <el-table-column label="时间" :width="isFullscreen ? 168 : 140">
         <template #default="{ row }">{{ formatTime(row.created_at) }}</template>
       </el-table-column>
-      <el-table-column label="操作" :width="isFullscreen ? 100 : 88" align="center" fixed="right">
+      <el-table-column label="操作" :width="isFullscreen ? 140 : 120" align="center" fixed="right">
         <template #default="{ row }">
           <el-button
-            v-if="row.resumable"
+            v-if="row.status === 'failed'"
             type="primary"
             link
             size="small"
-            :loading="resumingId === row.id"
-            @click="emit('resume', row)"
+            :loading="retryingId === row.id"
+            @click="emit('retry', row)"
           >
-            继续下载
+            重试
+          </el-button>
+          <el-button
+            v-if="row.can_overwrite"
+            type="warning"
+            link
+            size="small"
+            :loading="overwritingId === row.id"
+            @click="emit('overwrite', row)"
+          >
+            强制覆盖
           </el-button>
         </template>
       </el-table-column>
@@ -64,13 +78,15 @@ defineProps<{
   total: number
   page: number
   pageSize: number
-  resumingId: string | null
+  retryingId: string | null
+  overwritingId: string | null
   isFullscreen?: boolean
 }>()
 
 const emit = defineEmits<{
   'page-change': [page: number]
-  resume: [row: DownloadRecord]
+  retry: [row: DownloadRecord]
+  overwrite: [row: DownloadRecord]
 }>()
 
 const isActive = (row: DownloadRecord) => row.status === 'pending' || row.status === 'running'
@@ -107,6 +123,10 @@ const formatTime = (ts: number) => new Date(ts * 1000).toLocaleString()
   font-size: 11px;
   color: var(--app-text-muted);
   line-height: 1.3;
+}
+
+.skip-tag {
+  margin-top: 4px;
 }
 
 .pager {

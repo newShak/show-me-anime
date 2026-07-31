@@ -95,6 +95,8 @@ class DownloadJobResponse(BaseModel):
     progress: int = 0
     message: str | None = None
     saved_files: int = 0
+    skipped_files: int = 0
+    target_existed: bool = False
 
 
 class DownloadJobBatchResponse(BaseModel):
@@ -126,9 +128,12 @@ class DownloadRecordResponse(BaseModel):
     progress: int = 0
     message: str | None = None
     saved_files: int = 0
+    skipped_files: int = 0
+    target_existed: bool = False
     created_at: float
     finished_at: float | None = None
     resumable: bool = False
+    can_overwrite: bool = False
 
 
 class DownloadRecordListResponse(BaseModel):

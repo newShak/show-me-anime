@@ -2,6 +2,7 @@
 
 import logging
 import shutil
+from dataclasses import dataclass
 from pathlib import Path
 
 from app.config import Settings
@@ -9,6 +10,12 @@ from app.config import Settings
 logger = logging.getLogger(__name__)
 
 IMAGE_SUFFIXES = {".jpg", ".jpeg", ".png", ".webp", ".gif", ".bmp"}
+
+
+@dataclass
+class MoveResult:
+    saved: int = 0
+    skipped: int = 0
 
 
 def job_cache_dir(settings: Settings, job_id: str) -> Path:
@@ -20,9 +27,9 @@ def job_cache_dir(settings: Settings, job_id: str) -> Path:
     return work
 
 
-def move_cache_files_to_dest(cache_dir: Path, dest_dir: Path) -> int:
+def move_cache_files_to_dest(cache_dir: Path, dest_dir: Path, *, overwrite: bool = True) -> MoveResult:
     dest_dir.mkdir(parents=True, exist_ok=True)
-    moved = 0
+    result = MoveResult()
     for item in sorted(cache_dir.iterdir()):
         if not item.is_file():
             continue
@@ -31,11 +38,14 @@ def move_cache_files_to_dest(cache_dir: Path, dest_dir: Path) -> int:
         if item.suffix.lower() not in IMAGE_SUFFIXES:
             continue
         target = dest_dir / item.name
+        if target.exists() and not overwrite:
+            result.skipped += 1
+            continue
         if target.exists():
             target.unlink()
         shutil.move(str(item), str(target))
-        moved += 1
-    return moved
+        result.saved += 1
+    return result
 
 
 def cleanup_job_cache(cache_dir: Path) -> None:

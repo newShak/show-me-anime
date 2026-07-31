@@ -69,6 +69,43 @@ def test_reconcile_keeps_active_download_job():
         db.commit()
 
 
+def test_reconcile_keeps_queued_pending_job():
+    """排队等信号量的 pending 任务不应被误判为僵死。"""
+    from app.services.download.jobs import _lock, _running_ids
+
+    now = time.time()
+    with SessionLocal(bind=get_engine()) as db:
+        db.add(
+            DownloadRecord(
+                id="queued-dl-1",
+                source="wnacg",
+                album_id="album-q",
+                title="排队中",
+                target_rel_path="imports/queued",
+                status="pending",
+                progress=0,
+                message="",
+                created_at=now,
+            )
+        )
+        db.commit()
+
+        with _lock:
+            _running_ids.add("queued-dl-1")
+        try:
+            count = reconcile_stale_download_jobs(db)
+            assert count == 0
+            row = db.get(DownloadRecord, "queued-dl-1")
+            assert row.status == "pending"
+            assert is_download_job_running("queued-dl-1")
+        finally:
+            with _lock:
+                _running_ids.discard("queued-dl-1")
+
+        db.delete(db.get(DownloadRecord, "queued-dl-1"))
+        db.commit()
+
+
 def test_reconcile_stale_marks_resumable(client):
     from app.config import get_settings
 

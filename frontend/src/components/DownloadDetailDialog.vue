@@ -34,6 +34,15 @@
     <template #footer>
       <el-button @click="visible = false">关闭</el-button>
       <el-button
+        v-if="job?.status === 'failed'"
+        type="warning"
+        :loading="downloading"
+        @click="onRetry"
+      >
+        重试
+      </el-button>
+      <el-button
+        v-else
         type="primary"
         :loading="downloading"
         :disabled="!detail || job?.status === 'running'"
@@ -50,7 +59,8 @@
 import { computed, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { createDownloadJob, fetchDownloadJob, fetchRemoteDetail, fetchRemotePreviews } from '@/api/download'
+import { createDownloadJob, fetchDownloadJob, fetchRemoteDetail, fetchRemotePreviews, retryDownloadJob } from '@/api/download'
+import { apiErrorMessage } from '@/api/http'
 import DownloadPathPicker from '@/components/DownloadPathPicker.vue'
 import { albumFolderName, joinTargetPath, parentFromTarget } from '@/utils/downloadPath'
 import type { DownloadJob, RemoteAlbum, RemoteDetail } from '@/types/download'
@@ -146,11 +156,31 @@ const pollJob = async (jobId: string) => {
     const { data } = await fetchDownloadJob(jobId)
     job.value = data
     if (data.status === 'done' || data.status === 'failed') {
-      if (data.status === 'done') ElMessage.success('下载完成')
-      else ElMessage.error(data.message ?? '下载失败')
+      if (data.status === 'done') {
+        ElMessage.success(data.message ?? '下载完成')
+        if (data.skipped_files > 0) {
+          ElMessage.warning('部分文件已存在被跳过，可在下载记录中强制覆盖')
+        }
+      } else {
+        ElMessage.error(data.message ?? '下载失败')
+      }
       return
     }
     await new Promise((r) => setTimeout(r, 300))
+  }
+}
+
+const onRetry = async () => {
+  if (!job.value) return
+  downloading.value = true
+  try {
+    const { data } = await retryDownloadJob(job.value.id)
+    job.value = data
+    await pollJob(data.id)
+  } catch {
+    ElMessage.error('重试失败')
+  } finally {
+    downloading.value = false
   }
 }
 
@@ -165,9 +195,10 @@ const onDownload = async () => {
       target_rel_path: targetPath.value,
     })
     job.value = data
+    if (data.target_existed) ElMessage.warning('目标路径已存在，将跳过已有文件')
     await pollJob(data.id)
-  } catch {
-    ElMessage.error('创建下载任务失败')
+  } catch (e) {
+    ElMessage.error(apiErrorMessage(e, '创建下载任务失败'))
   } finally {
     downloading.value = false
   }

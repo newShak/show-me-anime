@@ -17,9 +17,11 @@
       :total="records.total.value"
       :page="records.page.value"
       :page-size="records.pageSize"
-      :resuming-id="records.resumingId.value"
+      :retrying-id="records.retryingId.value"
+      :overwriting-id="records.overwritingId.value"
       @page-change="records.onPageChange"
-      @resume="records.onResume"
+      @retry="records.onRetry"
+      @overwrite="records.onOverwrite"
     />
   </el-drawer>
 
@@ -43,9 +45,11 @@
       :total="records.total.value"
       :page="records.page.value"
       :page-size="records.pageSize"
-      :resuming-id="records.resumingId.value"
+      :retrying-id="records.retryingId.value"
+      :overwriting-id="records.overwritingId.value"
       @page-change="records.onPageChange"
-      @resume="records.onResume"
+      @retry="records.onRetry"
+      @overwrite="records.onOverwrite"
     />
   </el-dialog>
 </template>

@@ -28,6 +28,7 @@ logger = logging.getLogger(__name__)
 
 _jobs: dict[str, DownloadJobState] = {}
 _running_ids: set[str] = set()
+_force_overwrite: set[str] = set()
 _lock = threading.Lock()
 _run_sem: threading.Semaphore | None = None
 _run_sem_size = 0
@@ -68,6 +69,30 @@ def _insert_record(job: DownloadJobState) -> None:
         db.close()
 
 
+def _dest_dir(settings: Settings, target_rel_path: str) -> Path:
+    dest = (settings.gallery_root / target_rel_path).resolve()
+    root = settings.gallery_root.resolve()
+    if not str(dest).startswith(str(root)):
+        raise ValueError("target path escapes gallery root")
+    return dest
+
+
+def target_path_exists(settings: Settings, target_rel_path: str) -> bool:
+    """目标目录已存在且含非隐藏内容时视为占用。"""
+    dest = _dest_dir(settings, target_rel_path)
+    if not dest.is_dir():
+        return False
+    return any(not item.name.startswith(".") for item in dest.iterdir())
+
+
+def _finish_message(saved: int, skipped: int) -> str:
+    if saved and skipped:
+        return f"已保存 {saved} 个文件，跳过 {skipped} 个已存在"
+    if skipped and not saved:
+        return f"跳过 {skipped} 个已存在文件，未新增"
+    return f"已保存 {saved} 个文件"
+
+
 def create_download_job(
     source: str,
     album_id: str,
@@ -78,6 +103,8 @@ def create_download_job(
     if not rel:
         raise ValueError("invalid target_rel_path")
 
+    settings = get_settings()
+    existed = target_path_exists(settings, rel)
     job = DownloadJobState(
         id=uuid.uuid4().hex[:12],
         source=source,
@@ -85,6 +112,8 @@ def create_download_job(
         title=title,
         target_rel_path=rel,
         status="pending",
+        target_existed=existed,
+        message="目标路径已存在，将跳过已有文件" if existed else None,
     )
     with _lock:
         _jobs[job.id] = job
@@ -178,112 +207,207 @@ def create_download_jobs_batch(
     return jobs
 
 
-def resume_download_job(job_id: str) -> DownloadJobState:
+def retry_download_job(job_id: str) -> DownloadJobState:
+    """重试失败任务：有断点则续传，否则清空缓存后重新下载。"""
     job = get_job(job_id)
     if job is None:
         raise ValueError("job not found")
     if job.status == "done":
         raise ValueError("job already done")
-    if job.status == "running" and is_download_job_running(job_id):
+    if is_download_job_running(job_id):
         raise ValueError("job already running")
+    if job.status != "failed":
+        raise ValueError("job cannot be retried")
 
     settings = get_settings()
     cache_dir = job_cache_dir(settings, job_id)
     from app.services.download.transfer import is_job_resumable
 
-    if not is_job_resumable(cache_dir):
-        raise ValueError("no resumable partial download")
+    if is_job_resumable(cache_dir):
+        message = "等待续传"
+    else:
+        cleanup_job_cache(cache_dir)
+        message = "等待重试"
 
     with _lock:
         _jobs[job_id] = job
-    _update(job_id, status="pending", message="等待续传")
+        _force_overwrite.discard(job_id)
+    _update(job_id, status="pending", progress=0, message=message, saved_files=0, skipped_files=0)
     threading.Thread(target=_run_job, args=(job_id,), daemon=True).start()
     return get_job(job_id) or job
 
 
-def _run_job(job_id: str) -> None:
-    sem = _run_semaphore()
-    sem.acquire()
+def overwrite_download_job(job_id: str) -> DownloadJobState:
+    """强制覆盖：重新下载并覆盖目标目录已有文件。"""
     job = get_job(job_id)
     if job is None:
-        sem.release()
-        return
+        raise ValueError("job not found")
+    if is_download_job_running(job_id):
+        raise ValueError("job already running")
+    if job.status != "done":
+        raise ValueError("job cannot be overwritten")
+    if not job.target_existed and job.skipped_files <= 0:
+        raise ValueError("job has nothing to overwrite")
+
+    settings = get_settings()
+    cleanup_job_cache(job_cache_dir(settings, job_id))
     with _lock:
         _jobs[job_id] = job
+        _force_overwrite.add(job_id)
+    _update(
+        job_id,
+        status="pending",
+        progress=0,
+        message="等待强制覆盖",
+        saved_files=0,
+        skipped_files=0,
+    )
+    threading.Thread(target=_run_job, args=(job_id,), daemon=True).start()
+    return get_job(job_id) or job
+
+
+def resume_download_job(job_id: str) -> DownloadJobState:
+    return retry_download_job(job_id)
+
+
+def _take_force_overwrite(job_id: str) -> bool:
+    with _lock:
+        if job_id in _force_overwrite:
+            _force_overwrite.discard(job_id)
+            return True
+        return False
+
+
+def _run_job(job_id: str) -> None:
+    sem = _run_semaphore()
+    with _lock:
         _running_ids.add(job_id)
-    settings = get_settings()
-    _update(job_id, status="running", progress=5, message="准备下载")
     try:
+        sem.acquire()
+        job = get_job(job_id)
+        if job is None:
+            return
+        with _lock:
+            _jobs[job_id] = job
+        settings = get_settings()
+        overwrite = _take_force_overwrite(job_id)
+        dest_dir = _dest_dir(settings, job.target_rel_path)
+        existed = job.target_existed or target_path_exists(settings, job.target_rel_path)
+        start_msg = "准备下载"
+        if existed and not overwrite:
+            start_msg = "目标路径已存在，跳过已有文件"
+        _update(
+            job_id,
+            status="running",
+            progress=5,
+            message=start_msg,
+            target_existed=existed,
+        )
         adapter = get_adapter(job.source, settings)
         target = adapter.resolve_download(job.album_id)
         cache_dir = job_cache_dir(settings, job_id)
-        dest_dir = (settings.gallery_root / job.target_rel_path).resolve()
-        root = settings.gallery_root.resolve()
-        if not str(dest_dir).startswith(str(root)):
-            raise ValueError("target path escapes gallery root")
+        pre_skipped = 0
 
         if settings.download_use_mock or str(target.urls[0]).startswith("mock://"):
-            _write_mock_images(cache_dir, job.title, job.album_id)
+            pre_skipped = _write_mock_images(cache_dir, job.title, job.album_id, dest_dir, overwrite)
         elif target.kind == "images":
-            _write_images(target.urls, cache_dir, job_id, len(target.urls), target.referer)
+            pre_skipped = _write_images(
+                target.urls, cache_dir, dest_dir, job_id, len(target.urls), target.referer, overwrite
+            )
         else:
-            _write_archive(target, cache_dir, job_id)
+            _write_archive(target, cache_dir, job_id, overwrite)
 
-        saved = move_cache_files_to_dest(cache_dir, dest_dir)
+        move = move_cache_files_to_dest(cache_dir, dest_dir, overwrite=overwrite)
         cleanup_job_cache(cache_dir)
-        if saved == 0:
+        saved = move.saved
+        skipped = move.skipped + pre_skipped
+        if saved == 0 and skipped == 0:
             raise ValueError("没有可写入画廊的文件")
 
-        _update(job_id, progress=90, message="触发扫描", saved_files=saved)
+        msg = _finish_message(saved, skipped)
+        _update(job_id, progress=90, message="触发扫描", saved_files=saved, skipped_files=skipped)
         run_scan(source="download", changed_paths=[job.target_rel_path])
-        _update(job_id, status="done", progress=100, message=f"已保存 {saved} 个文件", saved_files=saved)
-        logger.info("download job_id=%s done path=%s files=%s", job_id, job.target_rel_path, saved)
+        _update(
+            job_id,
+            status="done",
+            progress=100,
+            message=msg,
+            saved_files=saved,
+            skipped_files=skipped,
+            target_existed=existed,
+        )
+        logger.info(
+            "download job_id=%s done path=%s saved=%s skipped=%s",
+            job_id,
+            job.target_rel_path,
+            saved,
+            skipped,
+        )
     except Exception as exc:
         logger.exception("download job_id=%s failed: %s", job_id, exc)
         _update(job_id, status="failed", message=str(exc))
     finally:
         with _lock:
             _running_ids.discard(job_id)
+            _force_overwrite.discard(job_id)
         sem.release()
 
 
-def _write_mock_images(dest_dir: Path, title: str, album_id: str) -> int:
+def _write_mock_images(
+    cache_dir: Path, title: str, album_id: str, dest_dir: Path, overwrite: bool
+) -> int:
     count = 3
+    skipped = 0
     seed_base = int(hashlib.md5(album_id.encode()).hexdigest()[:8], 16)
     for i in range(1, count + 1):
+        name = f"{i:03d}.jpg"
+        if not overwrite and (dest_dir / name).is_file():
+            skipped += 1
+            continue
         seed = seed_base + i
         color = ((seed * 40) % 200 + 30, (seed * 70) % 200 + 30, (seed * 110) % 200 + 30)
         img = Image.new("RGB", (800, 1200), color)
-        img.save(dest_dir / f"{i:03d}.jpg", format="JPEG", quality=88)
-    (dest_dir / ".mock-source.txt").write_text(f"mock wnacg {album_id} {title}\n", encoding="utf-8")
-    return count
+        img.save(cache_dir / name, format="JPEG", quality=88)
+    (cache_dir / ".mock-source.txt").write_text(f"mock wnacg {album_id} {title}\n", encoding="utf-8")
+    return skipped
 
 
 def _write_images(
-    urls: list[str], dest_dir: Path, job_id: str, total: int, referer: str | None = None
+    urls: list[str],
+    cache_dir: Path,
+    dest_dir: Path,
+    job_id: str,
+    total: int,
+    referer: str | None,
+    overwrite: bool,
 ) -> int:
     from app.services.download.http_client import download_client
-
-    settings = get_settings()
-    saved = 0
-    headers = {"Referer": referer} if referer else {}
     from app.services.download.transfer import SpeedLimiter
 
+    settings = get_settings()
+    headers = {"Referer": referer} if referer else {}
     limiter = SpeedLimiter(settings.download_speed_limit_kbps)
+    fetched = skipped = 0
     with download_client(settings) as client:
         for idx, url in enumerate(urls, start=1):
+            ext = _guess_ext(url, None)
+            name = f"{idx:03d}{ext}"
+            if not overwrite and (dest_dir / name).is_file():
+                skipped += 1
+                continue
             res = client.get(url, headers=headers)
             res.raise_for_status()
-            limiter.wait(len(res.content))
             ext = _guess_ext(url, res.headers.get("content-type"))
-            (dest_dir / f"{idx:03d}{ext}").write_bytes(res.content)
-            saved += 1
-            pct = 5 + int(80 * saved / max(total, 1))
-            _update(job_id, progress=pct, message=f"下载 {saved}/{total}")
-    return saved
+            name = f"{idx:03d}{ext}"
+            limiter.wait(len(res.content))
+            (cache_dir / name).write_bytes(res.content)
+            fetched += 1
+            pct = 5 + int(80 * fetched / max(total, 1))
+            _update(job_id, progress=pct, message=f"下载 {fetched}/{total}")
+    return skipped
 
 
-def _write_archive(target, dest_dir: Path, job_id: str) -> int:
+def _write_archive(target, cache_dir: Path, job_id: str, overwrite: bool) -> None:
     from app.services.download.http_client import download_client
     from app.services.download.transfer import (
         ZIP_NAME,
@@ -294,16 +418,17 @@ def _write_archive(target, dest_dir: Path, job_id: str) -> int:
 
     settings = get_settings()
     url = target.urls[0]
-    zip_path = dest_dir / ZIP_NAME
+    zip_path = cache_dir / ZIP_NAME
 
-    saved = try_extract_or_none(zip_path, dest_dir)
-    if saved is not None:
+    extracted = try_extract_or_none(zip_path, cache_dir, overwrite=overwrite)
+    if extracted is not None:
+        saved, skipped = extracted
         _update(job_id, progress=75, message="解压中")
         zip_path.unlink(missing_ok=True)
-        clear_resume_meta(dest_dir)
-        if saved == 0:
+        clear_resume_meta(cache_dir)
+        if saved == 0 and skipped == 0:
             raise ValueError("压缩包内没有可用文件")
-        return saved
+        return
 
     partial = zip_path.stat().st_size if zip_path.is_file() else 0
     _update(job_id, progress=15, message=f"续传下载 ({partial // 1024}KB)" if partial else "下载压缩包")
@@ -326,14 +451,14 @@ def _write_archive(target, dest_dir: Path, job_id: str) -> int:
         )
 
     _update(job_id, progress=75, message="解压中")
-    saved = try_extract_or_none(zip_path, dest_dir)
-    if saved is None:
+    extracted = try_extract_or_none(zip_path, cache_dir, overwrite=overwrite)
+    if extracted is None:
         raise ValueError("压缩包损坏或不完整")
+    saved, skipped = extracted
     zip_path.unlink(missing_ok=True)
-    clear_resume_meta(dest_dir)
-    if saved == 0:
+    clear_resume_meta(cache_dir)
+    if saved == 0 and skipped == 0:
         raise ValueError("压缩包内没有可用文件")
-    return saved
 
 
 def _guess_ext(url: str, content_type: str | None) -> str:

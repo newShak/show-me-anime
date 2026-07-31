@@ -4,6 +4,8 @@ import hashlib
 import io
 import logging
 import re
+import threading
+import time
 
 from PIL import Image
 
@@ -36,6 +38,7 @@ _cover_url_cache: dict[str, str] = {}
 _preview_url_cache: dict[str, list[str]] = {}
 _preview_meta_cache: dict[str, dict[str, int]] = {}
 _effective_base_cache: dict[str, str] = {}
+_link_sign_lock = threading.Lock()
 
 
 def _slug(text: str) -> str:
@@ -136,23 +139,34 @@ class WnacgAdapter:
             "Origin": origin,
             "Content-Type": "application/json",
         }
-        try:
-            with download_client(self.settings) as client:
-                res = client.post(
-                    worker_api,
-                    json={"file_key": file_key, "file_name": file_name},
-                    headers=headers,
-                )
+        last_err = ""
+        for attempt in range(3):
+            try:
+                with _link_sign_lock:
+                    with download_client(self.settings) as client:
+                        res = client.post(
+                            worker_api,
+                            json={"file_key": file_key, "file_name": file_name},
+                            headers=headers,
+                        )
                 if res.status_code == 200:
                     data = res.json()
                     if data.get("success") and data.get("url"):
                         return str(data["url"])
-                    logger.warning("generate-link failed: %s", data.get("msg"))
-        except Exception as exc:
-            logger.warning("generate-link error: %s", exc)
+                    last_err = str(data.get("msg") or "generate-link rejected")
+                    logger.warning("generate-link failed: %s", last_err)
+                else:
+                    last_err = f"HTTP {res.status_code}"
+                    logger.warning("generate-link HTTP %s", res.status_code)
+            except Exception as exc:
+                last_err = str(exc)
+                logger.warning("generate-link error (attempt %s): %s", attempt + 1, exc)
+            if attempt < 2:
+                time.sleep(0.6 * (attempt + 1))
         if backup_url:
+            logger.info("generate-link fallback to backup_url")
             return backup_url
-        raise ValueError("无法获取下载链接，请检查代理或稍后重试")
+        raise ValueError(f"无法获取下载链接，请检查代理或稍后重试 ({last_err})")
 
     def fetch_cover_bytes(self, album_id: str) -> tuple[bytes, str]:
         if self.use_mock:

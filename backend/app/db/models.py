@@ -94,6 +94,8 @@ class DownloadRecord(Base):
     progress: Mapped[int] = mapped_column(Integer, default=0)
     message: Mapped[str | None] = mapped_column(Text, nullable=True)
     saved_files: Mapped[int] = mapped_column(Integer, default=0)
+    skipped_files: Mapped[int] = mapped_column(Integer, default=0)
+    target_existed: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     created_at: Mapped[float] = mapped_column(Float, default=lambda: time.time())
     finished_at: Mapped[float | None] = mapped_column(Float, nullable=True)
 

@@ -163,8 +163,8 @@ def download_file_resumable(
     return done
 
 
-def extract_zip_to_dir(zip_path: Path, dest_dir: Path) -> int:
-    saved = 0
+def extract_zip_to_dir(zip_path: Path, dest_dir: Path, *, overwrite: bool = True) -> tuple[int, int]:
+    saved = skipped = 0
     with zipfile.ZipFile(zip_path) as zf:
         for name in zf.namelist():
             if name.endswith("/"):
@@ -173,19 +173,22 @@ def extract_zip_to_dir(zip_path: Path, dest_dir: Path) -> int:
             if not base or base.startswith("."):
                 continue
             out = dest_dir / base
+            if out.exists() and not overwrite:
+                skipped += 1
+                continue
             with zf.open(name) as src, out.open("wb") as dst:
                 dst.write(src.read())
             saved += 1
-    return saved
+    return saved, skipped
 
 
-def try_extract_or_none(zip_path: Path, dest_dir: Path) -> int | None:
+def try_extract_or_none(zip_path: Path, dest_dir: Path, *, overwrite: bool = True) -> tuple[int, int] | None:
     if not zip_path.is_file() or not zipfile.is_zipfile(zip_path):
         return None
     try:
         with zipfile.ZipFile(zip_path) as zf:
             if zf.testzip() is not None:
                 return None
-        return extract_zip_to_dir(zip_path, dest_dir)
+        return extract_zip_to_dir(zip_path, dest_dir, overwrite=overwrite)
     except (zipfile.BadZipFile, OSError):
         return None

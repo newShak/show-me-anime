@@ -86,3 +86,5 @@ class DownloadJobState:
     progress: int = 0
     message: str | None = None
     saved_files: int = 0
+    skipped_files: int = 0
+    target_existed: bool = False

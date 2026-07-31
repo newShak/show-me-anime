@@ -31,8 +31,10 @@ from app.services.download.jobs import (
     default_target_rel_path,
     get_job,
     is_download_job_running,
+    overwrite_download_job,
     reconcile_stale_download_jobs,
     resume_download_job,
+    retry_download_job,
     _safe_rel_path,
 )
 from app.services.download.records import list_records
@@ -54,6 +56,8 @@ def _job_response(job) -> DownloadJobResponse:
         progress=job.progress,
         message=job.message,
         saved_files=job.saved_files,
+        skipped_files=job.skipped_files,
+        target_existed=job.target_existed,
     )
 
 
@@ -112,11 +116,16 @@ def download_records(
                 progress=r.progress,
                 message=r.message,
                 saved_files=r.saved_files,
+                skipped_files=r.skipped_files,
+                target_existed=r.target_existed,
                 created_at=r.created_at,
                 finished_at=r.finished_at,
                 resumable=r.status == "failed"
                 and not is_download_job_running(r.id)
                 and is_job_resumable(settings.download_cache_dir / r.id),
+                can_overwrite=r.status == "done"
+                and not is_download_job_running(r.id)
+                and (r.target_existed or r.skipped_files > 0),
             )
             for r in rows
         ],
@@ -304,6 +313,24 @@ def get_download_job(job_id: str, db: Session = Depends(get_db)) -> DownloadJobR
 def resume_download_job_api(job_id: str) -> DownloadJobResponse:
     try:
         job = resume_download_job(job_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return _job_response(job)
+
+
+@router.post("/jobs/{job_id}/retry", response_model=DownloadJobResponse)
+def retry_download_job_api(job_id: str) -> DownloadJobResponse:
+    try:
+        job = retry_download_job(job_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return _job_response(job)
+
+
+@router.post("/jobs/{job_id}/overwrite", response_model=DownloadJobResponse)
+def overwrite_download_job_api(job_id: str) -> DownloadJobResponse:
+    try:
+        job = overwrite_download_job(job_id)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return _job_response(job)

@@ -74,6 +74,12 @@ export const fetchDownloadJob = (jobId: string) => http.get<DownloadJob>(`/downl
 export const resumeDownloadJob = (jobId: string) =>
   http.post<DownloadJob>(`/download/jobs/${jobId}/resume`)
 
+export const retryDownloadJob = (jobId: string) =>
+  http.post<DownloadJob>(`/download/jobs/${jobId}/retry`)
+
+export const overwriteDownloadJob = (jobId: string) =>
+  http.post<DownloadJob>(`/download/jobs/${jobId}/overwrite`)
+
 export const testDownloadProxy = () => http.post<ProxyTestResult>('/download/proxy/test')
 
 export const clearDownloadCache = () => http.post<DownloadCacheClearResult>('/download/cache/clear')

@@ -72,6 +72,8 @@ export type DownloadJob = {
   progress: number
   message: string | null
   saved_files: number
+  skipped_files: number
+  target_existed: boolean
 }
 
 export type DownloadJobCreate = {
@@ -105,9 +107,12 @@ export type DownloadRecord = {
   progress: number
   message: string | null
   saved_files: number
+  skipped_files: number
+  target_existed: boolean
   created_at: number
   finished_at: number | null
   resumable: boolean
+  can_overwrite: boolean
 }
 
 export type DownloadRecordList = {

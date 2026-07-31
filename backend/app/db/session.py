@@ -77,6 +77,14 @@ def _migrate_schema(conn) -> None:
         logger.info("migrating schema: add scan_jobs.mode")
         conn.execute(text("ALTER TABLE scan_jobs ADD COLUMN mode TEXT DEFAULT 'incremental'"))
 
+    dl_cols = {row[1] for row in conn.execute(text("PRAGMA table_info(download_records)")).fetchall()}
+    if dl_cols and "skipped_files" not in dl_cols:
+        logger.info("migrating schema: add download_records.skipped_files")
+        conn.execute(text("ALTER TABLE download_records ADD COLUMN skipped_files INTEGER DEFAULT 0"))
+    if dl_cols and "target_existed" not in dl_cols:
+        logger.info("migrating schema: add download_records.target_existed")
+        conn.execute(text("ALTER TABLE download_records ADD COLUMN target_existed INTEGER DEFAULT 0"))
+
 
 def get_db() -> Generator[Session, None, None]:
     db = SessionLocal(bind=get_engine())
