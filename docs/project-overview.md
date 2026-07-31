@@ -55,10 +55,10 @@ gallery/
 └── 单行本.zip         → album（source_type=zip）
 ```
 
-### 2.3 磁盘只读、DB 可删
+### 2.3 扫描与删除
 
-- 扫描**只读**画廊目录，写入 SQLite 索引
-- 管理页「删除节点」仅删 **DB 记录**（及关联标签/进度/搜索索引），**不删磁盘文件**
+- **扫描**：只读画廊目录，写入 SQLite 节点索引
+- **删除节点**（`batch-delete`）：**同时删除磁盘上的目录/压缩包与 DB 记录**（含标签、进度、收藏、搜索索引），**不可恢复**
 - 缩略图为衍生数据，可「重建缩略图」整目录清除后按需再生
 
 ### 2.4 增量扫描
@@ -258,7 +258,7 @@ Base URL: `/api`
 | GET | `/nodes?parent_id=&sort_by=&sort_order=` | 子节点列表；`parent_id` 省略为根 |
 | GET | `/nodes/{id}` | 单个节点 |
 | PATCH | `/nodes/{id}` | 更新 `node_type` / `cover_rel_path` / `cover_index` |
-| POST | `/nodes/batch-delete` | 批量删 DB 记录 `{ ids: number[] }` |
+| POST | `/nodes/batch-delete` | 批量删除节点：`{ ids: number[] }`，**同步删磁盘目录/压缩包** |
 | GET | `/nodes/{id}/images` | 图片文件名列表（含 index） |
 | GET | `/nodes/{id}/images/{index}/file` | 原图 |
 | GET | `/nodes/{id}/images/{index}/thumb` | 缩略图 WebP |
@@ -396,7 +396,7 @@ backend/app/
 
 - **无内置认证**：管理 API 与浏览 API 同等暴露，部署时需反向代理 + 鉴权或仅内网访问
 - **路径安全**：图片接口校验 resolved 路径在允许范围内
-- **删除语义**：batch-delete 仅删索引，不删源文件
+- **删除语义**：`batch-delete` 会**永久删除**画廊内对应文件夹/压缩包及数据库记录，操作不可撤销
 
 详见 [README 安全说明](../README.md#安全说明)。
 
