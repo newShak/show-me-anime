@@ -161,6 +161,8 @@ const subText = (node: NodeItem) => {
   box-shadow: var(--app-card-shadow);
   transition: transform 0.2s ease, box-shadow 0.2s ease;
   border: 2px solid transparent;
+  content-visibility: auto;
+  contain-intrinsic-size: 200px 280px;
 }
 
 .card:hover {

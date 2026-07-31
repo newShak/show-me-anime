@@ -414,12 +414,6 @@ const refreshTags = () => {
   return loadNodeTags([...new Set(ids)])
 }
 
-const loadViewMeta = (node: NodeItem | null) => {
-  void loadCrumbs(node)
-  void refreshTags()
-  void loadProgress()
-}
-
 const onCurrentTagClick = (tag: TagItem) => {
   goSearch('', [tag.id])
 }
@@ -634,6 +628,31 @@ const applyBrowseScroll = async () => {
   clearBrowseScroll(nodeId.value)
 }
 
+const BATCH_SIZE = 36
+
+const applyNodes = async (items: NodeItem[], seq: number) => {
+  if (items.length <= BATCH_SIZE) {
+    nodes.value = items
+    return
+  }
+  nodes.value = items.slice(0, BATCH_SIZE)
+  for (let i = BATCH_SIZE; i < items.length; i += BATCH_SIZE) {
+    await new Promise<void>((r) => requestAnimationFrame(() => r()))
+    if (seq !== loadSeq) return
+    nodes.value = items.slice(0, i + BATCH_SIZE)
+  }
+}
+
+const loadViewMeta = (node: NodeItem | null) => {
+  const run = () => {
+    void loadCrumbs(node)
+    void refreshTags()
+    void loadProgress()
+  }
+  if (typeof requestIdleCallback === 'function') requestIdleCallback(run)
+  else setTimeout(run, 0)
+}
+
 const loadView = async (id: number | null) => {
   const seq = ++loadSeq
   const sort = nodeSort.value
@@ -641,12 +660,14 @@ const loadView = async (id: number | null) => {
   images.value = []
   if (id == null) currentNode.value = null
   else if (currentNode.value?.id !== id) currentNode.value = null
+  if (getBrowseScroll(id) == null) window.scrollTo(0, 0)
 
   if (id == null) {
     const { data } = await fetchNodes(undefined, sort)
     if (seq !== loadSeq) return
     currentNode.value = null
-    nodes.value = data
+    await applyNodes(data, seq)
+    if (seq !== loadSeq) return
     crumbs.value = [{ id: null, name: '画廊' }]
     loadViewMeta(null)
     return
@@ -659,7 +680,8 @@ const loadView = async (id: number | null) => {
   currentNode.value = node
 
   if (node.node_type === 'container') {
-    nodes.value = childrenRes.data
+    await applyNodes(childrenRes.data, seq)
+    if (seq !== loadSeq) return
     loadViewMeta(node)
     return
   }
@@ -668,7 +690,8 @@ const loadView = async (id: number | null) => {
   if (seq !== loadSeq) return
 
   images.value = imagesRes.data.items
-  nodes.value = node.node_type === 'both' ? childrenRes.data : []
+  await applyNodes(node.node_type === 'both' ? childrenRes.data : [], seq)
+  if (seq !== loadSeq) return
   loadViewMeta(node)
 }
 
@@ -732,10 +755,9 @@ const startRead = async () => {
   }
 }
 
-watch(nodeId, async (id, prev) => {
+watch(nodeId, (id, prev) => {
   if (id != null && id !== prev) touchRecentView(id)
-  await loadView(id)
-  await applyBrowseScroll()
+  void loadView(id).then(() => applyBrowseScroll())
 }, { immediate: true })
 
 onMounted(async () => {
