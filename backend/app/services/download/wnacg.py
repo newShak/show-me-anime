@@ -10,7 +10,7 @@ import time
 from PIL import Image
 
 from app.config import Settings, get_settings
-from app.services.download.http_client import download_client, generate_link_headers
+from app.services.download.http_client import browser_post_json, download_client, generate_link_headers, is_cloudflare_challenge
 from app.services.download.types import DownloadTarget, PreviewBatch, RemoteAlbum, RemoteBrowseResult, RemoteDetail, RemoteSearchResult, BrowseNavItem
 from app.services.download.wnacg_parse import (
     PAGE_SIZE,
@@ -124,7 +124,6 @@ class WnacgAdapter:
             cfg["file_name"],
             download_page,
             referer_base,
-            cfg["backup_url"],
         )
         cdn_host, signed, has_expiry = _cdn_url_flags(url)
         logger.info(
@@ -152,23 +151,23 @@ class WnacgAdapter:
         file_name: str,
         referer: str,
         origin: str,
-        backup_url: str,
     ) -> str:
         headers = generate_link_headers(referer, origin)
+        payload = {"file_key": file_key, "file_name": file_name}
         last_err = ""
+        cf_blocked = False
         for attempt in range(3):
             try:
                 with _link_sign_lock:
-                    with download_client(self.settings) as client:
-                        res = client.post(
-                            worker_api,
-                            json={"file_key": file_key, "file_name": file_name},
-                            headers=headers,
-                        )
-                if res.status_code == 200:
-                    data = res.json()
-                    if data.get("success") and data.get("url"):
-                        return str(data["url"])
+                    status, body, data = browser_post_json(
+                        worker_api,
+                        payload,
+                        headers,
+                        self.settings,
+                    )
+                if status == 200 and data and data.get("success") and data.get("url"):
+                    return str(data["url"])
+                if status == 200 and data:
                     last_err = str(data.get("msg") or "generate-link rejected")
                     logger.warning(
                         "generate-link rejected aid=%s worker=%s attempt=%s msg=%s",
@@ -178,17 +177,19 @@ class WnacgAdapter:
                         last_err,
                     )
                 else:
-                    last_err = f"HTTP {res.status_code}"
-                    body = (res.text or "")[:200]
+                    last_err = f"HTTP {status}"
+                    if is_cloudflare_challenge(body):
+                        cf_blocked = True
+                        last_err = "Cloudflare 拦截"
                     logger.warning(
                         "generate-link HTTP %s aid=%s worker=%s attempt=%s origin=%s referer=%s body=%s",
-                        res.status_code,
+                        status,
                         album_id,
                         worker_api,
                         attempt + 1,
                         headers.get("Origin"),
                         referer,
-                        body,
+                        body[:200],
                     )
             except Exception as exc:
                 last_err = str(exc)
@@ -201,9 +202,8 @@ class WnacgAdapter:
                 )
             if attempt < 2:
                 time.sleep(0.6 * (attempt + 1))
-        if backup_url:
-            logger.info("generate-link fallback backup_url aid=%s url=%s", album_id, backup_url[:120])
-            return backup_url
+        if cf_blocked:
+            raise ValueError("CDN 签名接口被 Cloudflare 拦截，请开启下载代理后重试")
         raise ValueError(f"无法获取下载链接，请检查代理或稍后重试 ({last_err})")
 
     def fetch_cover_bytes(self, album_id: str) -> tuple[bytes, str]:

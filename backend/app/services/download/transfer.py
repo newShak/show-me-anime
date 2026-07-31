@@ -13,6 +13,7 @@ from pathlib import Path
 import httpx
 
 from app.config import get_settings
+from app.services.download.http_client import _download_proxy
 
 logger = logging.getLogger(__name__)
 
@@ -30,6 +31,11 @@ def _cdn_url_info(url: str) -> tuple[str, bool]:
 
     parsed = urlparse(url)
     return parsed.netloc, "sign" in parse_qs(parsed.query)
+
+
+def _needs_browser_cdn(url: str) -> bool:
+    host, signed = _cdn_url_info(url)
+    return signed or host.endswith("wcdn.date")
 
 
 class SpeedLimiter:
@@ -127,6 +133,10 @@ def download_file_resumable(
             if attempt == 0:
                 time.sleep(random.uniform(0.3, 2.0))
             with _cdn_semaphore():
+                if _needs_browser_cdn(url):
+                    return _browser_download_resumable_once(
+                        url, referer, dest, file_key, on_progress, speed_limit_kbps
+                    )
                 return _download_file_resumable_once(
                     client, url, referer, dest, file_key, on_progress, speed_limit_kbps
                 )
@@ -150,6 +160,23 @@ def download_file_resumable(
             if attempt >= _MAX_RETRIES - 1:
                 raise
             logger.warning("cdn download transport error attempt %s/%s: %s", attempt + 1, _MAX_RETRIES, exc)
+        except Exception as exc:
+            resp = getattr(exc, "response", None)
+            code = getattr(resp, "status_code", None)
+            if code in _RETRYABLE_STATUS and attempt < _MAX_RETRIES - 1:
+                last_err = exc
+                host, signed = _cdn_url_info(url)
+                logger.warning(
+                    "cdn download HTTP %s attempt %s/%s host=%s signed=%s url=%s",
+                    code,
+                    attempt + 1,
+                    _MAX_RETRIES,
+                    host,
+                    signed,
+                    url[:120],
+                )
+            else:
+                raise
         if attempt < _MAX_RETRIES - 1:
             time.sleep(1.5 * (attempt + 1))
     if last_err:
@@ -224,6 +251,93 @@ def _download_file_resumable_once(
                             "total": total,
                         },
                     )
+
+    save_resume_meta(
+        dest.parent,
+        {"url": url, "referer": referer, "file_key": file_key, "downloaded": done, "total": total or done},
+    )
+    return done
+
+
+def _browser_download_resumable_once(
+    url: str,
+    referer: str | None,
+    dest: Path,
+    file_key: str | None,
+    on_progress: Callable[[int, int | None], None] | None = None,
+    speed_limit_kbps: int = 0,
+) -> int:
+    """wcdn.date 签名链使用 Chrome 指纹下载，绕过 Cloudflare。"""
+    from curl_cffi import requests as cf_requests
+
+    limiter = SpeedLimiter(speed_limit_kbps)
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    partial = dest.stat().st_size if dest.is_file() else 0
+
+    if partial > 0 and not validate_resume_file_key(dest.parent, file_key):
+        logger.info("resume file_key mismatch, restart download")
+        reset_partial_download(dest.parent)
+        partial = 0
+
+    headers: dict[str, str] = {"Referer": referer, "Accept-Encoding": "identity"} if referer else {"Accept-Encoding": "identity"}
+    if partial > 0:
+        headers["Range"] = f"bytes={partial}-"
+
+    proxy = _download_proxy(get_settings())
+    proxies = {"http": proxy, "https": proxy} if proxy else None
+    res = cf_requests.get(
+        url,
+        headers=headers,
+        impersonate="chrome",
+        proxies=proxies,
+        timeout=300,
+        stream=True,
+        allow_redirects=True,
+    )
+
+    if partial > 0 and res.status_code in {416, 404}:
+        reset_partial_download(dest.parent)
+        return _browser_download_resumable_once(url, referer, dest, file_key, on_progress, speed_limit_kbps)
+
+    if partial > 0 and res.status_code == 200:
+        logger.info("server ignored Range, restart download")
+        reset_partial_download(dest.parent)
+        partial = 0
+
+    mode = "ab" if res.status_code == 206 and partial > 0 else "wb"
+    if mode == "wb" and dest.is_file():
+        dest.unlink()
+
+    total = parse_total_bytes(
+        res.headers.get("content-range"),
+        res.headers.get("content-length"),
+        partial,
+        res.status_code,
+    )
+    if res.status_code >= 400:
+        res.raise_for_status()
+
+    done = partial if mode == "ab" else 0
+    with dest.open(mode) as f:
+        for chunk in res.iter_content(chunk_size=_CHUNK):
+            if not chunk:
+                continue
+            limiter.wait(len(chunk))
+            f.write(chunk)
+            done += len(chunk)
+            if on_progress:
+                on_progress(done, total)
+            if done % (_CHUNK * 8) < _CHUNK:
+                save_resume_meta(
+                    dest.parent,
+                    {
+                        "url": url,
+                        "referer": referer,
+                        "file_key": file_key,
+                        "downloaded": done,
+                        "total": total,
+                    },
+                )
 
     save_resume_meta(
         dest.parent,

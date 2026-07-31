@@ -69,6 +69,50 @@ def download_client(settings: Settings | None = None) -> httpx.Client:
     )
 
 
+def _download_proxy(settings: Settings | None = None) -> str | None:
+    settings = settings or get_settings()
+    if settings.download_proxy_enabled and settings.download_proxy:
+        return settings.download_proxy
+    return None
+
+
+def is_cloudflare_challenge(body: str) -> bool:
+    text = (body or "").lower()
+    return "just a moment" in text or "cf-browser-verification" in text
+
+
+def browser_post_json(
+    url: str,
+    payload: dict,
+    headers: dict[str, str],
+    settings: Settings | None = None,
+    *,
+    timeout: float = 30.0,
+) -> tuple[int, str, dict | None]:
+    """Chrome TLS 指纹 POST，用于 Cloudflare 保护的 generate-link。"""
+    from curl_cffi import requests as cf_requests
+
+    proxy = _download_proxy(settings)
+    proxies = {"http": proxy, "https": proxy} if proxy else None
+    res = cf_requests.post(
+        url,
+        json=payload,
+        headers=headers,
+        impersonate="chrome",
+        proxies=proxies,
+        timeout=timeout,
+    )
+    data: dict | None = None
+    if res.status_code == 200:
+        try:
+            parsed = res.json()
+            if isinstance(parsed, dict):
+                data = parsed
+        except Exception:
+            pass
+    return res.status_code, res.text or "", data
+
+
 def probe_proxy(settings: Settings | None = None, url: str | None = None) -> tuple[bool, str]:
     """测试能否访问 wnacg 镜像 API 域名。"""
     settings = settings or get_settings()
