@@ -16,12 +16,9 @@
       />
       <div class="cover-wrap">
         <span v-if="progressText(node)" class="progress-badge">{{ progressText(node) }}</span>
-        <img
+        <LazyCover
           v-if="node.cover_rel_path"
           :src="coverThumbUrl(node.id, node.cover_rel_path)"
-          class="cover"
-          loading="lazy"
-          alt=""
         />
         <div v-else class="cover placeholder">📁</div>
         <button
@@ -85,6 +82,7 @@
 
 <script setup lang="ts">
 import { MoreFilled } from '@element-plus/icons-vue'
+import LazyCover from '@/components/LazyCover.vue'
 import type { NodeItem } from '@/types/node'
 import type { TagItem } from '@/types/tag'
 import { coverThumbUrl } from '@/api/nodes'
@@ -239,6 +237,10 @@ const subText = (node: NodeItem) => {
   pointer-events: none;
 }
 
+.cover-wrap :deep(.cover) {
+  transition: transform 0.3s ease;
+}
+
 .cover {
   width: 100%;
   aspect-ratio: 3 / 4;
@@ -247,7 +249,7 @@ const subText = (node: NodeItem) => {
   transition: transform 0.3s ease;
 }
 
-.card:hover .cover {
+.card:hover .cover-wrap :deep(.cover) {
   transform: scale(1.03);
 }
 

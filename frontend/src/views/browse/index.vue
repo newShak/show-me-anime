@@ -132,7 +132,7 @@
             </div>
           </header>
 
-          <section class="gallery">
+          <section class="gallery" :key="String(nodeId ?? 'root')">
             <template v-if="currentNode && isAlbumView">
               <ImageGrid :node-id="currentNode.id" :images="images" @open="openReader" />
               <div v-if="nodes.length" class="section-label">子文件夹</div>
@@ -270,6 +270,7 @@ const tagMode = ref<TagSearchMode>('or')
 const favoriteIds = ref<number[]>([])
 const SIDEBAR_KEY = 'sidebar-collapsed'
 const sidebarCollapsed = ref(localStorage.getItem(SIDEBAR_KEY) !== '0')
+let loadSeq = 0
 const stored = getStoredSort()
 const sortValue = ref(`${stored.sortBy}:${stored.sortOrder}`)
 const nodeSort = computed(() => parseSortValue(sortValue.value))
@@ -410,7 +411,13 @@ const loadNodeTags = async (ids: number[]) => {
 const refreshTags = () => {
   const ids = nodes.value.map((n) => n.id)
   if (currentNode.value) ids.push(currentNode.value.id)
-  loadNodeTags([...new Set(ids)])
+  return loadNodeTags([...new Set(ids)])
+}
+
+const loadViewMeta = (node: NodeItem | null) => {
+  void loadCrumbs(node)
+  void refreshTags()
+  void loadProgress()
 }
 
 const onCurrentTagClick = (tag: TagItem) => {
@@ -628,31 +635,41 @@ const applyBrowseScroll = async () => {
 }
 
 const loadView = async (id: number | null) => {
+  const seq = ++loadSeq
   const sort = nodeSort.value
+  nodes.value = []
+  images.value = []
+  if (id == null) currentNode.value = null
+  else if (currentNode.value?.id !== id) currentNode.value = null
+
   if (id == null) {
+    const { data } = await fetchNodes(undefined, sort)
+    if (seq !== loadSeq) return
     currentNode.value = null
-    nodes.value = (await fetchNodes(undefined, sort)).data
-    images.value = []
+    nodes.value = data
     crumbs.value = [{ id: null, name: '画廊' }]
-    await Promise.all([refreshTags(), loadProgress()])
+    loadViewMeta(null)
     return
   }
 
   const [nodeRes, childrenRes] = await Promise.all([fetchNode(id), fetchNodes(id, sort)])
+  if (seq !== loadSeq) return
+
   const node = nodeRes.data
   currentNode.value = node
 
   if (node.node_type === 'container') {
     nodes.value = childrenRes.data
-    images.value = []
-    await Promise.all([loadCrumbs(node), refreshTags(), loadProgress()])
+    loadViewMeta(node)
     return
   }
 
-  const [imagesRes] = await Promise.all([fetchNodeImages(id), loadCrumbs(node)])
+  const imagesRes = await fetchNodeImages(id)
+  if (seq !== loadSeq) return
+
   images.value = imagesRes.data.items
   nodes.value = node.node_type === 'both' ? childrenRes.data : []
-  await Promise.all([refreshTags(), loadProgress()])
+  loadViewMeta(node)
 }
 
 const goTo = (id: number | null) => {
