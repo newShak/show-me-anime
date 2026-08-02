@@ -27,14 +27,14 @@
           <DownloadPathPicker v-model="parentPath" :hint="targetHint" />
         </el-form-item>
       </el-form>
-      <el-progress v-if="job" :percentage="job.progress" :status="jobStatus" />
-      <p v-if="job?.message" class="job-msg">{{ job.message }}</p>
+      <el-progress v-if="activeJob" :percentage="activeJob.progress" :status="jobStatus" />
+      <p v-if="activeJob?.message" class="job-msg">{{ activeJob.message }}</p>
     </template>
 
     <template #footer>
       <el-button @click="visible = false">关闭</el-button>
       <el-button
-        v-if="job?.status === 'failed'"
+        v-if="activeJob?.status === 'failed'"
         type="warning"
         :loading="downloading"
         @click="onRetry"
@@ -45,12 +45,12 @@
         v-else
         type="primary"
         :loading="downloading"
-        :disabled="!detail || job?.status === 'running'"
+        :disabled="!detail || isJobActive"
         @click="onDownload"
       >
-        {{ job?.status === 'done' ? '已完成' : '下载到画廊' }}
+        {{ activeJob?.status === 'done' ? '已完成' : '下载到画廊' }}
       </el-button>
-      <el-button v-if="job?.status === 'done'" type="success" @click="goBrowse">在画廊中查看</el-button>
+      <el-button v-if="activeJob?.status === 'done'" type="success" @click="goBrowse">在画廊中查看</el-button>
     </template>
   </el-dialog>
 </template>
@@ -80,10 +80,24 @@ const previewTotal = ref(0)
 const parentPath = ref('')
 const job = ref<DownloadJob | null>(null)
 const activeIndex = ref(0)
+let pollGen = 0
+
+const jobMatchesItem = (j: DownloadJob, item: RemoteAlbum | null) =>
+  !!item && j.source === item.source && j.album_id === item.id
+
+const activeJob = computed(() => {
+  const j = job.value
+  return j && jobMatchesItem(j, props.item) ? j : null
+})
+
+const isJobActive = computed(() => {
+  const status = activeJob.value?.status
+  return status === 'running' || status === 'pending'
+})
 
 const jobStatus = computed(() => {
-  if (job.value?.status === 'failed') return 'exception'
-  if (job.value?.status === 'done') return 'success'
+  if (activeJob.value?.status === 'failed') return 'exception'
+  if (activeJob.value?.status === 'done') return 'success'
   return undefined
 })
 
@@ -113,9 +127,15 @@ const targetPath = computed(() => {
 
 const targetHint = computed(() => (targetPath.value ? `将保存到：${targetPath.value}` : ''))
 
+const stopPoll = () => {
+  pollGen += 1
+}
+
 const load = async (item: RemoteAlbum) => {
+  stopPoll()
   loading.value = true
   job.value = null
+  downloading.value = false
   activeIndex.value = 0
   try {
     const { data } = await fetchRemoteDetail(item.source, item.id)
@@ -156,8 +176,11 @@ const loadMore = async () => {
 }
 
 const pollJob = async (jobId: string) => {
+  const gen = pollGen
   for (let i = 0; i < 60; i++) {
+    if (gen !== pollGen) return
     const { data } = await fetchDownloadJob(jobId)
+    if (gen !== pollGen || !jobMatchesItem(data, props.item)) return
     job.value = data
     if (data.status === 'done' || data.status === 'failed') {
       if (data.status === 'done') {
@@ -175,10 +198,11 @@ const pollJob = async (jobId: string) => {
 }
 
 const onRetry = async () => {
-  if (!job.value) return
+  if (!activeJob.value) return
   downloading.value = true
   try {
-    const { data } = await retryDownloadJob(job.value.id)
+    const { data } = await retryDownloadJob(activeJob.value.id)
+    if (!jobMatchesItem(data, props.item)) return
     job.value = data
     await pollJob(data.id)
   } catch {
@@ -215,12 +239,14 @@ const goBrowse = () => {
 }
 
 const onClosed = () => {
+  stopPoll()
   detail.value = null
   previewUrls.value = []
   previewHasMore.value = false
   previewTotal.value = 0
   parentPath.value = ''
   job.value = null
+  downloading.value = false
   activeIndex.value = 0
 }
 

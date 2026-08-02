@@ -61,7 +61,7 @@
     />
 
     <DownloadDetailDialog v-model="detailOpen" :item="activeItem" :preview-batch-size="previewBatchSize" />
-    <DownloadBatchDialog v-model="batchOpen" :items="selectedItems" />
+    <DownloadBatchDialog v-model="batchOpen" :items="selectedItems" @submitted="clearSelection" />
     <DownloadRecordDrawer ref="recordsRef" v-model="recordsOpen" />
   </div>
 </template>
@@ -204,6 +204,11 @@ const onPageChange = (p: number) => {
 const toggleSelectMode = () => {
   selectMode.value = !selectMode.value
   if (!selectMode.value) selectedIds.value = new Set()
+}
+
+const clearSelection = () => {
+  selectMode.value = false
+  selectedIds.value = new Set()
 }
 
 const openDetail = (item: RemoteAlbum) => {

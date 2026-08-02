@@ -21,7 +21,7 @@ from app.services.download.cache import (
 from app.services.download.records import create_record, get_record, record_to_job, update_record
 from app.services.download.registry import get_adapter
 from app.services.download.types import DownloadCancelled, DownloadJobState
-from app.services.download.wnacg import _slug
+from app.services.download.naming import album_folder_name
 from app.services.scan_runner import run_scan
 
 logger = logging.getLogger(__name__)
@@ -207,7 +207,7 @@ def default_target_rel_path(source: str, title: str, album_id: str, settings: Se
 
 def album_target_rel_path(parent_rel_path: str, title: str, album_id: str) -> str:
     base = _safe_rel_path(parent_rel_path)
-    folder = _slug(title) or album_id
+    folder = album_folder_name(title, album_id)
     return f"{base}/{folder}" if base else folder
 
 
@@ -219,7 +219,7 @@ def create_download_jobs_batch(
     used: set[str] = set()
     jobs: list[DownloadJobState] = []
     for source, album_id, title in items:
-        folder = _slug(title) or album_id
+        folder = album_folder_name(title, album_id)
         rel = f"{base}/{folder}" if base else folder
         if rel in used:
             suffix = album_id[-6:] if len(album_id) >= 6 else album_id

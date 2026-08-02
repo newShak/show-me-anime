@@ -522,6 +522,7 @@ const onTagPickerConfirm = async (tagIds: number[]) => {
     ElMessage.success(n > 1 ? `已为 ${data.updated} 个相册添加标签` : '已添加标签')
     tagPickerOpen.value = false
     tagPickerNodeIds.value = []
+    clearSelection()
     await refreshTags()
   } catch {
     ElMessage.error('添加标签失败')

@@ -50,11 +50,6 @@ def _cdn_url_flags(url: str) -> tuple[str, bool, bool]:
     return parsed.netloc, "sign" in qs, "expiry" in qs
 
 
-def _slug(text: str) -> str:
-    cleaned = re.sub(r"[^\w\s-]", "", text, flags=re.UNICODE).strip().replace(" ", "-")
-    return cleaned[:60] or "album"
-
-
 def _placeholder_cover(album_id: str, size: int = 320) -> bytes:
     seed = int(hashlib.md5(album_id.encode()).hexdigest()[:8], 16)
     r, g, b = (seed % 180 + 40, (seed // 3) % 180 + 40, (seed // 7) % 180 + 40)

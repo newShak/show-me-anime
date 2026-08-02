@@ -58,6 +58,7 @@ import type { DownloadJob, RemoteAlbum } from '@/types/download'
 
 const props = defineProps<{ items: RemoteAlbum[] }>()
 const visible = defineModel<boolean>({ default: false })
+const emit = defineEmits<{ submitted: [] }>()
 
 const defaultParentPath = () => getDownloadParentPath() || 'imports/wnacg'
 const parentPath = ref(defaultParentPath())
@@ -123,6 +124,7 @@ const onSubmit = async () => {
       })),
     })
     jobs.value = data.jobs
+    emit('submitted')
     if (data.jobs.some((j) => j.target_existed)) {
       ElMessage.warning('部分目标路径已存在，将跳过下载')
     }
