@@ -5,8 +5,9 @@ from sqlalchemy.orm import Session
 
 from app.db.models import Node, NodeTag, Tag
 from app.db.session import get_db
-from app.schemas.tag import NodeTagsBatchAdd, NodeTagsItem, NodeTagsUpdate, TagCreate, TagPageResponse, TagResponse
+from app.schemas.tag import NodeTagsBatchAdd, NodeTagsItem, NodeTagsUpdate, TagCreate, TagEnsureRequest, TagEnsureResponse, TagPageResponse, TagResponse
 from app.services.node_admin import sync_node_search_index
+from app.services.tag_admin import ensure_tags_by_names
 
 router = APIRouter(prefix="/tags", tags=["tags"])
 
@@ -38,6 +39,15 @@ def create_tag(body: TagCreate, db: Session = Depends(get_db)) -> Tag:
     db.commit()
     db.refresh(tag)
     return tag
+
+
+@router.post("/ensure", response_model=TagEnsureResponse)
+def ensure_tags(body: TagEnsureRequest, db: Session = Depends(get_db)) -> TagEnsureResponse:
+    tags = ensure_tags_by_names(db, body.names)
+    db.commit()
+    for tag in tags:
+        db.refresh(tag)
+    return TagEnsureResponse(tags=tags)
 
 
 @router.delete("/{tag_id}")

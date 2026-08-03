@@ -1,11 +1,44 @@
 """外站下载记录持久化。"""
 
+import json
 import time
 
 from sqlalchemy.orm import Session
 
 from app.db.models import DownloadRecord
 from app.services.download.types import DownloadJobState
+
+
+def _dump_int_list(items: list[int]) -> str:
+    return json.dumps(items, ensure_ascii=False)
+
+
+def _dump_str_list(items: list[str]) -> str:
+    return json.dumps(items, ensure_ascii=False)
+
+
+def _load_int_list(raw: str | None) -> list[int]:
+    if not raw:
+        return []
+    try:
+        data = json.loads(raw)
+    except json.JSONDecodeError:
+        return []
+    if not isinstance(data, list):
+        return []
+    return [int(x) for x in data if isinstance(x, int) or str(x).isdigit()]
+
+
+def _load_str_list(raw: str | None) -> list[str]:
+    if not raw:
+        return []
+    try:
+        data = json.loads(raw)
+    except json.JSONDecodeError:
+        return []
+    if not isinstance(data, list):
+        return []
+    return [str(x).strip() for x in data if str(x).strip()]
 
 
 def create_record(db: Session, job: DownloadJobState) -> None:
@@ -22,6 +55,8 @@ def create_record(db: Session, job: DownloadJobState) -> None:
         saved_files=job.saved_files,
         skipped_files=job.skipped_files,
         target_existed=job.target_existed,
+        tag_ids_json=_dump_int_list(job.tag_ids),
+        import_remote_tags_json=_dump_str_list(job.import_remote_tags),
         created_at=now,
         finished_at=None,
     )
@@ -82,4 +117,6 @@ def record_to_job(row: DownloadRecord) -> DownloadJobState:
         saved_files=row.saved_files,
         skipped_files=row.skipped_files,
         target_existed=row.target_existed,
+        tag_ids=_load_int_list(row.tag_ids_json),
+        import_remote_tags=_load_str_list(row.import_remote_tags_json),
     )

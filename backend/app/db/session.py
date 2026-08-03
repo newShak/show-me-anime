@@ -84,6 +84,12 @@ def _migrate_schema(conn) -> None:
     if dl_cols and "target_existed" not in dl_cols:
         logger.info("migrating schema: add download_records.target_existed")
         conn.execute(text("ALTER TABLE download_records ADD COLUMN target_existed INTEGER DEFAULT 0"))
+    if dl_cols and "tag_ids_json" not in dl_cols:
+        logger.info("migrating schema: add download_records.tag_ids_json")
+        conn.execute(text("ALTER TABLE download_records ADD COLUMN tag_ids_json TEXT"))
+    if dl_cols and "import_remote_tags_json" not in dl_cols:
+        logger.info("migrating schema: add download_records.import_remote_tags_json")
+        conn.execute(text("ALTER TABLE download_records ADD COLUMN import_remote_tags_json TEXT"))
 
 
 def get_db() -> Generator[Session, None, None]:

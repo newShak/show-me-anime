@@ -25,6 +25,14 @@ class TagCreate(BaseModel):
     name: str = Field(min_length=1, max_length=64)
 
 
+class TagEnsureRequest(BaseModel):
+    names: list[str] = Field(default_factory=list)
+
+
+class TagEnsureResponse(BaseModel):
+    tags: list[TagResponse]
+
+
 class NodeTagsUpdate(BaseModel):
     tag_ids: list[int]
 

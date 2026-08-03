@@ -26,6 +26,9 @@
         <el-form-item label="保存到">
           <DownloadPathPicker v-model="parentPath" :hint="targetHint" />
         </el-form-item>
+        <el-form-item label="标签">
+          <DownloadTagSection ref="tagSectionRef" :remote-tags="detail.tags" />
+        </el-form-item>
       </el-form>
       <el-progress v-if="activeJob" :percentage="activeJob.progress" :status="jobStatus" />
       <p v-if="activeJob?.message" class="job-msg">{{ activeJob.message }}</p>
@@ -62,6 +65,7 @@ import { ElMessage } from 'element-plus'
 import { createDownloadJob, fetchDownloadJob, fetchRemoteDetail, fetchRemotePreviews, retryDownloadJob } from '@/api/download'
 import { apiErrorMessage } from '@/api/http'
 import DownloadPathPicker from '@/components/DownloadPathPicker.vue'
+import DownloadTagSection from '@/components/DownloadTagSection.vue'
 import { getDownloadParentPath, saveDownloadParentPath } from '@/composables/useDownloadParentPath'
 import { albumFolderName, joinTargetPath, parentFromTarget } from '@/utils/downloadPath'
 import type { DownloadJob, RemoteAlbum, RemoteDetail } from '@/types/download'
@@ -80,6 +84,7 @@ const previewTotal = ref(0)
 const parentPath = ref('')
 const job = ref<DownloadJob | null>(null)
 const activeIndex = ref(0)
+const tagSectionRef = ref<InstanceType<typeof DownloadTagSection> | null>(null)
 let pollGen = 0
 
 const jobMatchesItem = (j: DownloadJob, item: RemoteAlbum | null) =>
@@ -113,7 +118,6 @@ const metaLine = computed(() => {
   }
   parts.push(`${detail.value.page_count} P`)
   if (previewTotal.value) parts.push(`预览 ${previewUrls.value.length}/${previewTotal.value}`)
-  if (detail.value.tags.length) parts.push(detail.value.tags.join(' · '))
   return parts.join(' · ')
 })
 
@@ -217,11 +221,14 @@ const onDownload = async () => {
   saveDownloadParentPath(parentPath.value)
   downloading.value = true
   try {
+    const tags = tagSectionRef.value?.getPayload() ?? { tag_ids: [], import_remote_tags: [] }
     const { data } = await createDownloadJob({
       source: props.item.source,
       album_id: props.item.id,
       title: detail.value.title.replace(/<[^>]+>/g, ''),
       target_rel_path: targetPath.value,
+      tag_ids: tags.tag_ids,
+      import_remote_tags: tags.import_remote_tags,
     })
     job.value = data
     if (data.target_existed) ElMessage.warning('目标路径已存在，将跳过下载')
@@ -248,6 +255,7 @@ const onClosed = () => {
   job.value = null
   downloading.value = false
   activeIndex.value = 0
+  tagSectionRef.value?.reset()
 }
 
 watch(

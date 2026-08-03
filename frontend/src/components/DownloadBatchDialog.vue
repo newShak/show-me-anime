@@ -8,6 +8,9 @@
       <el-form-item label="保存到">
         <DownloadPathPicker v-model="parentPath" :hint="batchHint" />
       </el-form-item>
+      <el-form-item label="标签">
+        <DownloadTagSection ref="tagSectionRef" :show-remote="false" />
+      </el-form-item>
     </el-form>
     <div v-if="jobs.length" class="jobs">
       <div v-for="job in jobs" :key="job.id" class="job-row">
@@ -50,6 +53,7 @@
 import { computed, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import DownloadPathPicker from '@/components/DownloadPathPicker.vue'
+import DownloadTagSection from '@/components/DownloadTagSection.vue'
 import { getDownloadParentPath, saveDownloadParentPath } from '@/composables/useDownloadParentPath'
 import { createDownloadJobsBatch, fetchDownloadJob, retryDownloadJob } from '@/api/download'
 import { apiErrorMessage } from '@/api/http'
@@ -66,6 +70,7 @@ const submitting = ref(false)
 const retryingId = ref<string | null>(null)
 const retryingAll = ref(false)
 const jobs = ref<DownloadJob[]>([])
+const tagSectionRef = ref<InstanceType<typeof DownloadTagSection> | null>(null)
 
 const running = computed(() => jobs.value.some((j) => j.status === 'running' || j.status === 'pending'))
 const hasFailed = computed(() => jobs.value.some((j) => j.status === 'failed'))
@@ -115,8 +120,10 @@ const onSubmit = async () => {
   saveDownloadParentPath(parentPath.value)
   submitting.value = true
   try {
+    const tags = tagSectionRef.value?.getPayload() ?? { tag_ids: [], import_remote_tags: [] }
     const { data } = await createDownloadJobsBatch({
       parent_rel_path: parentPath.value,
+      tag_ids: tags.tag_ids,
       items: props.items.map((i) => ({
         source: i.source,
         album_id: i.id,
@@ -171,6 +178,7 @@ const onClosed = () => {
   parentPath.value = defaultParentPath()
   retryingId.value = null
   retryingAll.value = false
+  tagSectionRef.value?.reset()
 }
 
 watch(visible, (open) => {

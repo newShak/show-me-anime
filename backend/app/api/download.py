@@ -308,7 +308,14 @@ def download_preview(
 @router.post("/jobs", response_model=DownloadJobResponse)
 def start_download_job(body: DownloadJobCreate) -> DownloadJobResponse:
     try:
-        job = create_download_job(body.source, body.album_id, body.title, body.target_rel_path)
+        job = create_download_job(
+            body.source,
+            body.album_id,
+            body.title,
+            body.target_rel_path,
+            tag_ids=body.tag_ids,
+            import_remote_tags=body.import_remote_tags,
+        )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return _job_response(job)
@@ -317,8 +324,11 @@ def start_download_job(body: DownloadJobCreate) -> DownloadJobResponse:
 @router.post("/jobs/batch", response_model=DownloadJobBatchResponse)
 def start_download_jobs_batch(body: DownloadJobBatchCreate) -> DownloadJobBatchResponse:
     try:
-        items = [(i.source, i.album_id, i.title) for i in body.items]
-        jobs = create_download_jobs_batch(items, body.parent_rel_path)
+        items = [
+            (i.source, i.album_id, i.title, i.tag_ids, i.import_remote_tags)
+            for i in body.items
+        ]
+        jobs = create_download_jobs_batch(items, body.parent_rel_path, shared_tag_ids=body.tag_ids)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return DownloadJobBatchResponse(jobs=[_job_response(j) for j in jobs])

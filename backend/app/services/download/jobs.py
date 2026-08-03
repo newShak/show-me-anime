@@ -22,6 +22,7 @@ from app.services.download.records import create_record, get_record, record_to_j
 from app.services.download.registry import get_adapter
 from app.services.download.types import DownloadCancelled, DownloadJobState
 from app.services.download.naming import album_folder_name
+from app.services.download.tagging import apply_tags_to_node, resolve_job_tag_ids
 from app.services.scan_runner import run_scan
 
 logger = logging.getLogger(__name__)
@@ -115,11 +116,25 @@ def _finish_message(saved: int, skipped: int) -> str:
     return f"已保存 {saved} 个文件"
 
 
+def _apply_job_tags(job: DownloadJobState) -> None:
+    """下载完成或跳过后，为入库节点追加标签。"""
+    if not job.tag_ids and not job.import_remote_tags:
+        return
+    db = SessionLocal(bind=get_engine())
+    try:
+        tag_ids = resolve_job_tag_ids(db, job.tag_ids, job.import_remote_tags)
+        apply_tags_to_node(db, job.target_rel_path, tag_ids)
+    finally:
+        db.close()
+
+
 def create_download_job(
     source: str,
     album_id: str,
     title: str,
     target_rel_path: str,
+    tag_ids: list[int] | None = None,
+    import_remote_tags: list[str] | None = None,
 ) -> DownloadJobState:
     rel = _safe_rel_path(target_rel_path)
     if not rel:
@@ -136,6 +151,8 @@ def create_download_job(
         status="pending",
         target_existed=existed,
         message="目标路径已存在，将跳过下载" if existed else None,
+        tag_ids=list(tag_ids or []),
+        import_remote_tags=[t.strip() for t in (import_remote_tags or []) if t.strip()],
     )
     with _lock:
         _jobs[job.id] = job
@@ -212,20 +229,32 @@ def album_target_rel_path(parent_rel_path: str, title: str, album_id: str) -> st
 
 
 def create_download_jobs_batch(
-    items: list[tuple[str, str, str]],
+    items: list[tuple[str, str, str, list[int], list[str]]],
     parent_rel_path: str,
+    shared_tag_ids: list[int] | None = None,
 ) -> list[DownloadJobState]:
     base = _safe_rel_path(parent_rel_path)
     used: set[str] = set()
     jobs: list[DownloadJobState] = []
-    for source, album_id, title in items:
+    shared = list(shared_tag_ids or [])
+    for source, album_id, title, tag_ids, import_remote_tags in items:
         folder = album_folder_name(title, album_id)
         rel = f"{base}/{folder}" if base else folder
         if rel in used:
             suffix = album_id[-6:] if len(album_id) >= 6 else album_id
             rel = f"{base}/{folder}-{suffix}" if base else f"{folder}-{suffix}"
         used.add(rel)
-        jobs.append(create_download_job(source, album_id, title, rel))
+        merged_tag_ids = list(dict.fromkeys([*shared, *tag_ids]))
+        jobs.append(
+            create_download_job(
+                source,
+                album_id,
+                title,
+                rel,
+                tag_ids=merged_tag_ids,
+                import_remote_tags=import_remote_tags,
+            )
+        )
     return jobs
 
 
@@ -379,6 +408,9 @@ def _run_job(job_id: str) -> None:
                 job.target_rel_path,
                 skipped,
             )
+            if job.tag_ids or job.import_remote_tags:
+                run_scan(source="download", changed_paths=[job.target_rel_path])
+            _apply_job_tags(job)
             return
         _update(job_id, status="running", progress=5, message="准备下载", target_existed=existed)
         _check_cancel(job_id)
@@ -407,6 +439,7 @@ def _run_job(job_id: str) -> None:
         msg = _finish_message(saved, skipped)
         _update(job_id, progress=90, message="触发扫描", saved_files=saved, skipped_files=skipped)
         run_scan(source="download", changed_paths=[job.target_rel_path])
+        _apply_job_tags(job)
         _update(
             job_id,
             status="done",

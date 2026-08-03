@@ -81,11 +81,14 @@ export type DownloadJobCreate = {
   album_id: string
   title: string
   target_rel_path: string
+  tag_ids?: number[]
+  import_remote_tags?: string[]
 }
 
 export type DownloadJobBatchCreate = {
   parent_rel_path: string
-  items: Pick<DownloadJobCreate, 'source' | 'album_id' | 'title'>[]
+  tag_ids?: number[]
+  items: Pick<DownloadJobCreate, 'source' | 'album_id' | 'title' | 'tag_ids' | 'import_remote_tags'>[]
 }
 
 export type DownloadJobBatchResult = {

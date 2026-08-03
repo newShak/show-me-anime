@@ -72,17 +72,22 @@ class DownloadJobCreate(BaseModel):
     album_id: str
     title: str
     target_rel_path: str = Field(min_length=1)
+    tag_ids: list[int] = []
+    import_remote_tags: list[str] = []
 
 
 class DownloadJobBatchItem(BaseModel):
     source: str = "wnacg"
     album_id: str
     title: str
+    tag_ids: list[int] = []
+    import_remote_tags: list[str] = []
 
 
 class DownloadJobBatchCreate(BaseModel):
     items: list[DownloadJobBatchItem] = Field(min_length=1)
     parent_rel_path: str = ""
+    tag_ids: list[int] = []
 
 
 class DownloadJobResponse(BaseModel):
