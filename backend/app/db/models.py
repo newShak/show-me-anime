@@ -98,6 +98,7 @@ class DownloadRecord(Base):
     target_existed: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     tag_ids_json: Mapped[str | None] = mapped_column(Text, nullable=True)
     import_remote_tags_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    auto_import_remote_tags: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     created_at: Mapped[float] = mapped_column(Float, default=lambda: time.time())
     finished_at: Mapped[float | None] = mapped_column(Float, nullable=True)
 

@@ -119,6 +119,8 @@ def _finish_message(saved: int, skipped: int) -> str:
 def _apply_job_tags(job: DownloadJobState) -> None:
     """下载完成或跳过后，为入库节点追加标签。"""
     import_remote = list(job.import_remote_tags)
+    if job.auto_import_remote_tags and not import_remote:
+        import_remote = _fetch_detail_remote_tags(job.source, job.album_id)
     if not job.tag_ids and not import_remote:
         return
     db = SessionLocal(bind=get_engine())
@@ -154,6 +156,7 @@ def create_download_job(
     target_rel_path: str,
     tag_ids: list[int] | None = None,
     import_remote_tags: list[str] | None = None,
+    auto_import_remote_tags: bool = False,
 ) -> DownloadJobState:
     rel = _safe_rel_path(target_rel_path)
     if not rel:
@@ -172,6 +175,7 @@ def create_download_job(
         message="目标路径已存在，将跳过下载" if existed else None,
         tag_ids=list(tag_ids or []),
         import_remote_tags=[t.strip() for t in (import_remote_tags or []) if t.strip()],
+        auto_import_remote_tags=auto_import_remote_tags,
     )
     with _lock:
         _jobs[job.id] = job
@@ -300,11 +304,9 @@ def create_download_jobs_batch(
     used: set[str] = set()
     jobs: list[DownloadJobState] = []
     shared = list(shared_tag_ids or [])
-    settings = get_settings()
     for source, album_id, title, tag_ids, import_remote_tags in items:
         remote = [t.strip() for t in (import_remote_tags or []) if t.strip()]
-        if auto_import_remote_tags and not remote:
-            remote = _fetch_detail_remote_tags(source, album_id, settings)
+        auto_tags = bool(auto_import_remote_tags and not remote)
         folder = album_folder_name(title, album_id)
         rel = f"{base}/{folder}" if base else folder
         if rel in used:
@@ -320,6 +322,7 @@ def create_download_jobs_batch(
                 rel,
                 tag_ids=merged_tag_ids,
                 import_remote_tags=remote,
+                auto_import_remote_tags=auto_tags,
             )
         )
     return jobs
@@ -478,7 +481,7 @@ def _run_job(job_id: str) -> None:
                 job.target_rel_path,
                 skipped,
             )
-            if job.tag_ids or job.import_remote_tags:
+            if job.tag_ids or job.import_remote_tags or job.auto_import_remote_tags:
                 run_scan_wait(source="download", changed_paths=[job.target_rel_path])
             _apply_job_tags(job)
             return

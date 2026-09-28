@@ -57,6 +57,7 @@ def create_record(db: Session, job: DownloadJobState) -> None:
         target_existed=job.target_existed,
         tag_ids_json=_dump_int_list(job.tag_ids),
         import_remote_tags_json=_dump_str_list(job.import_remote_tags),
+        auto_import_remote_tags=job.auto_import_remote_tags,
         created_at=now,
         finished_at=None,
     )
@@ -119,4 +120,5 @@ def record_to_job(row: DownloadRecord) -> DownloadJobState:
         target_existed=row.target_existed,
         tag_ids=_load_int_list(row.tag_ids_json),
         import_remote_tags=_load_str_list(row.import_remote_tags_json),
+        auto_import_remote_tags=bool(row.auto_import_remote_tags),
     )

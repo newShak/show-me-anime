@@ -90,6 +90,9 @@ def _migrate_schema(conn) -> None:
     if dl_cols and "import_remote_tags_json" not in dl_cols:
         logger.info("migrating schema: add download_records.import_remote_tags_json")
         conn.execute(text("ALTER TABLE download_records ADD COLUMN import_remote_tags_json TEXT"))
+    if dl_cols and "auto_import_remote_tags" not in dl_cols:
+        logger.info("migrating schema: add download_records.auto_import_remote_tags")
+        conn.execute(text("ALTER TABLE download_records ADD COLUMN auto_import_remote_tags INTEGER DEFAULT 0"))
 
 
 def get_db() -> Generator[Session, None, None]:

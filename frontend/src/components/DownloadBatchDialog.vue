@@ -86,15 +86,18 @@ const onSubmit = async () => {
     })
     jobs.value = data.jobs
     emit('submitted')
+    ElMessage.success(`已创建 ${data.jobs.length} 个下载任务`)
     if (data.jobs.some((j) => j.target_existed)) {
       ElMessage.warning('部分目标路径已存在，将跳过下载')
     }
-    await pollJobs()
   } catch (e) {
     ElMessage.error(apiErrorMessage(e, '创建下载任务失败'))
+    return
   } finally {
     submitting.value = false
   }
+  const ok = await pollJobs()
+  if (!ok) ElMessage.warning('任务已创建，进度刷新失败，可在下载记录中查看')
 }
 
 const onClosed = () => {

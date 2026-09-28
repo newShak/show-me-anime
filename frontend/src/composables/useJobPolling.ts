@@ -38,23 +38,28 @@ export const useJobPolling = () => {
     if (failed) ElMessage.warning(`${failed} 个下载失败，可点击重试`)
   }
 
-  const pollJobs = async () => {
+  const pollJobs = async (): Promise<boolean> => {
     const gen = ++generation
-    for (let round = 0; round < POLL_ROUNDS; round++) {
-      let pending = false
-      for (let i = 0; i < jobs.value.length; i++) {
-        if (isFinished(jobs.value[i])) continue
-        pending = true
-        const { data } = await fetchDownloadJob(jobs.value[i].id)
-        if (gen !== generation) return
-        jobs.value[i] = data
+    try {
+      for (let round = 0; round < POLL_ROUNDS; round++) {
+        let pending = false
+        for (let i = 0; i < jobs.value.length; i++) {
+          if (isFinished(jobs.value[i])) continue
+          pending = true
+          const { data } = await fetchDownloadJob(jobs.value[i].id)
+          if (gen !== generation) return true
+          jobs.value[i] = data
+        }
+        if (!pending) break
+        await new Promise((r) => setTimeout(r, POLL_INTERVAL_MS))
+        if (gen !== generation) return true
       }
-      if (!pending) break
-      await new Promise((r) => setTimeout(r, POLL_INTERVAL_MS))
-      if (gen !== generation) return
+      if (gen !== generation) return true
+      reportResult()
+      return true
+    } catch {
+      return false
     }
-    if (gen !== generation) return
-    reportResult()
   }
 
   const retryJob = async (job: DownloadJob) => {

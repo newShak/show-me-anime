@@ -107,3 +107,4 @@ class DownloadJobState:
     target_existed: bool = False
     tag_ids: list[int] = field(default_factory=list)
     import_remote_tags: list[str] = field(default_factory=list)
+    auto_import_remote_tags: bool = False
