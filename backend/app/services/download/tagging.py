@@ -21,14 +21,14 @@ def resolve_job_tag_ids(db: Session, tag_ids: list[int], import_remote_tags: lis
     return resolved
 
 
-def apply_tags_to_node(db: Session, target_rel_path: str, tag_ids: list[int]) -> int:
-    """按路径为节点追加标签，返回新增关联数。"""
+def apply_tags_to_node(db: Session, target_rel_path: str, tag_ids: list[int]) -> int | None:
+    """按路径为节点追加标签；找不到节点时返回 None，否则返回新增关联数。"""
     if not tag_ids:
         return 0
     node = db.query(Node).filter(Node.path == target_rel_path).one_or_none()
     if node is None:
         logger.warning("apply tags skipped, node not found path=%s", target_rel_path)
-        return 0
+        return None
 
     existing = {nt.tag_id for nt in db.query(NodeTag).filter(NodeTag.node_id == node.id).all()}
     added = 0

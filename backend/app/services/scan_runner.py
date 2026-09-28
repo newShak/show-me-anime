@@ -91,3 +91,29 @@ def run_scan(
 
 def is_scan_running() -> bool:
     return _lock.locked()
+
+
+def run_scan_wait(
+    source: str = "manual",
+    changed_paths: list[str] | None = None,
+    mode: str = constants.SCAN_MODE_INCREMENTAL,
+    timeout: float = 180.0,
+    interval: float = 0.25,
+) -> ScanJob | None:
+    """等待扫描锁后执行；用于下载完成后必须入库再打标的场景。"""
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        job = run_scan(source=source, changed_paths=changed_paths, mode=mode)
+        if job is not None:
+            return job
+        if not is_scan_running():
+            time.sleep(interval)
+            continue
+        time.sleep(interval)
+    logger.error(
+        "scan wait timeout source=%s paths=%s timeout=%ss",
+        source,
+        _scan_hint_paths(changed_paths),
+        timeout,
+    )
+    return None

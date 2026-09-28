@@ -23,7 +23,7 @@ from app.services.download.registry import get_adapter
 from app.services.download.types import DownloadCancelled, DownloadJobState
 from app.services.download.naming import album_folder_name
 from app.services.download.tagging import apply_tags_to_node, resolve_job_tag_ids
-from app.services.scan_runner import run_scan
+from app.services.scan_runner import run_scan_wait
 
 logger = logging.getLogger(__name__)
 
@@ -118,12 +118,31 @@ def _finish_message(saved: int, skipped: int) -> str:
 
 def _apply_job_tags(job: DownloadJobState) -> None:
     """下载完成或跳过后，为入库节点追加标签。"""
-    if not job.tag_ids and not job.import_remote_tags:
+    import_remote = list(job.import_remote_tags)
+    if not job.tag_ids and not import_remote:
         return
     db = SessionLocal(bind=get_engine())
     try:
-        tag_ids = resolve_job_tag_ids(db, job.tag_ids, job.import_remote_tags)
-        apply_tags_to_node(db, job.target_rel_path, tag_ids)
+        tag_ids = resolve_job_tag_ids(db, job.tag_ids, import_remote)
+        if not tag_ids:
+            return
+        for attempt in range(40):
+            result = apply_tags_to_node(db, job.target_rel_path, tag_ids)
+            if result is not None:
+                if result == 0 and attempt == 0:
+                    logger.info(
+                        "apply tags path=%s no new tags (already present or empty)",
+                        job.target_rel_path,
+                    )
+                return
+            db.expire_all()
+            time.sleep(0.25)
+        logger.error(
+            "apply tags gave up path=%s tag_ids=%s import_remote=%s",
+            job.target_rel_path,
+            job.tag_ids,
+            import_remote,
+        )
     finally:
         db.close()
 
@@ -245,13 +264,30 @@ def album_target_rel_path(parent_rel_path: str, title: str, album_id: str) -> st
 def _fetch_detail_remote_tags(source: str, album_id: str, settings: Settings | None = None) -> list[str]:
     """从外站详情页解析标签（列表/搜索接口通常不含 tags）。"""
     settings = settings or get_settings()
-    try:
-        adapter = get_adapter(source, settings)
-        detail = adapter.get_detail(album_id)
-    except Exception as exc:
-        logger.warning("fetch remote tags failed source=%s album=%s: %s", source, album_id, exc)
-        return []
-    return [t.strip() for t in (detail.tags or []) if t.strip()]
+    last_exc: Exception | None = None
+    for attempt in range(2):
+        try:
+            adapter = get_adapter(source, settings)
+            detail = adapter.get_detail(album_id)
+            tags = [t.strip() for t in (detail.tags or []) if t.strip()]
+            if tags:
+                return tags
+            if attempt == 0:
+                logger.info("fetch remote tags empty source=%s album=%s, retry once", source, album_id)
+        except Exception as exc:
+            last_exc = exc
+            logger.warning(
+                "fetch remote tags failed source=%s album=%s attempt=%s: %s",
+                source,
+                album_id,
+                attempt + 1,
+                exc,
+            )
+        if attempt == 0:
+            time.sleep(0.4)
+    if last_exc:
+        logger.warning("fetch remote tags gave up source=%s album=%s", source, album_id)
+    return []
 
 
 def create_download_jobs_batch(
@@ -443,7 +479,7 @@ def _run_job(job_id: str) -> None:
                 skipped,
             )
             if job.tag_ids or job.import_remote_tags:
-                run_scan(source="download", changed_paths=[job.target_rel_path])
+                run_scan_wait(source="download", changed_paths=[job.target_rel_path])
             _apply_job_tags(job)
             return
         _update(job_id, status="running", progress=5, message="准备下载", target_existed=existed)
@@ -472,7 +508,7 @@ def _run_job(job_id: str) -> None:
 
         msg = _finish_message(saved, skipped)
         _update(job_id, progress=90, message="触发扫描", saved_files=saved, skipped_files=skipped)
-        run_scan(source="download", changed_paths=[job.target_rel_path])
+        run_scan_wait(source="download", changed_paths=[job.target_rel_path])
         _apply_job_tags(job)
         _update(
             job_id,
