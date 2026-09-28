@@ -175,8 +175,22 @@ def get_job(job_id: str) -> DownloadJobState | None:
 
 
 def is_download_job_running(job_id: str) -> bool:
+    """任务是否仍有工作线程占用（含排队等信号量）。DB 已终态则清理残留标记。"""
     with _lock:
-        return job_id in _running_ids
+        if job_id not in _running_ids:
+            return False
+    db = SessionLocal(bind=get_engine())
+    try:
+        row = get_record(db, job_id)
+        if row is not None and row.status in {"done", "failed"}:
+            with _lock:
+                _running_ids.discard(job_id)
+                _cancel_ids.discard(job_id)
+                _jobs.pop(job_id, None)
+            return False
+    finally:
+        db.close()
+    return True
 
 
 def reconcile_stale_download_jobs(db) -> int:
@@ -341,13 +355,16 @@ def resume_download_job(job_id: str) -> DownloadJobState:
 
 def delete_download_record(job_id: str) -> None:
     """删除下载记录并清理缓存；进行中的任务不可删。"""
-    if is_download_job_running(job_id):
-        raise ValueError("job is running")
-    job = get_job(job_id)
-    if job is None:
-        raise ValueError("job not found")
-    if job.status in {"pending", "running"}:
-        raise ValueError("job is running")
+    db = SessionLocal(bind=get_engine())
+    try:
+        reconcile_stale_download_jobs(db)
+        row = get_record(db, job_id)
+        if row is None:
+            raise ValueError("job not found")
+        if row.status in {"pending", "running"} and is_download_job_running(job_id):
+            raise ValueError("job is running")
+    finally:
+        db.close()
 
     settings = get_settings()
     cleanup_job_cache(job_cache_dir(settings, job_id))

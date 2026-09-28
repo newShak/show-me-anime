@@ -267,6 +267,7 @@ def test_resume_download_job_no_partial(client):
 
 
 def test_download_records_filter_and_delete(client):
+    from app.db.models import DownloadRecord
     from app.db.session import SessionLocal, get_engine
     from app.services.download import jobs as jobs_mod
     from app.services.download.records import create_record
@@ -314,6 +315,16 @@ def test_download_records_filter_and_delete(client):
     all_rows = client.get("/api/download/records", params={"pageSize": 100}).json()["items"]
     assert not any(r["id"] == "filter-0" for r in all_rows)
 
+    db = SessionLocal(bind=get_engine())
+    try:
+        row = db.get(DownloadRecord, "filter-run")
+        assert row is not None
+        row.status = "running"
+        row.finished_at = None
+        db.commit()
+    finally:
+        db.close()
+
     with jobs_mod._lock:
         jobs_mod._running_ids.add("filter-run")
     try:
@@ -322,6 +333,75 @@ def test_download_records_filter_and_delete(client):
     finally:
         with jobs_mod._lock:
             jobs_mod._running_ids.discard("filter-run")
+
+
+def test_delete_failed_job_clears_stale_running_flag(client):
+    """DB 已失败但内存仍标记 running 时（如取消后线程尚在排队），应允许删除。"""
+    from app.db.session import SessionLocal, get_engine
+    from app.services.download import jobs as jobs_mod
+    from app.services.download.records import create_record
+    from app.services.download.types import DownloadJobState
+
+    db = SessionLocal(bind=get_engine())
+    try:
+        create_record(
+            db,
+            DownloadJobState(
+                id="stale-failed-del",
+                source="wnacg",
+                album_id="a-stale",
+                title="失败可删",
+                target_rel_path="imports/stale-failed",
+                status="failed",
+                message="404 Not Found",
+            ),
+        )
+    finally:
+        db.close()
+
+    with jobs_mod._lock:
+        jobs_mod._running_ids.add("stale-failed-del")
+    try:
+        res = client.delete("/api/download/records/stale-failed-del")
+        assert res.status_code == 204
+        assert not jobs_mod.is_download_job_running("stale-failed-del")
+    finally:
+        with jobs_mod._lock:
+            jobs_mod._running_ids.discard("stale-failed-del")
+
+
+def test_retry_failed_job_clears_stale_running_flag(client):
+    from app.db.session import SessionLocal, get_engine
+    from app.services.download import jobs as jobs_mod
+    from app.services.download.records import create_record
+    from app.services.download.types import DownloadJobState
+
+    db = SessionLocal(bind=get_engine())
+    try:
+        create_record(
+            db,
+            DownloadJobState(
+                id="stale-failed-retry",
+                source="wnacg",
+                album_id="album-stale",
+                title="失败可重试",
+                target_rel_path="mock-import/stale-retry",
+                status="failed",
+                message="404 Not Found",
+            ),
+        )
+    finally:
+        db.close()
+
+    with jobs_mod._lock:
+        jobs_mod._running_ids.add("stale-failed-retry")
+    try:
+        res = client.post("/api/download/jobs/stale-failed-retry/retry")
+        assert res.status_code == 200
+        assert res.json()["status"] in {"pending", "running"}
+    finally:
+        with jobs_mod._lock:
+            jobs_mod._running_ids.discard("stale-failed-retry")
 
 
 def test_cancel_pending_download_job(client):
