@@ -340,7 +340,12 @@ def start_download_jobs_batch(body: DownloadJobBatchCreate) -> DownloadJobBatchR
             (i.source, i.album_id, i.title, i.tag_ids, i.import_remote_tags)
             for i in body.items
         ]
-        jobs = create_download_jobs_batch(items, body.parent_rel_path, shared_tag_ids=body.tag_ids)
+        jobs = create_download_jobs_batch(
+            items,
+            body.parent_rel_path,
+            shared_tag_ids=body.tag_ids,
+            auto_import_remote_tags=body.auto_import_remote_tags,
+        )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return DownloadJobBatchResponse(jobs=[_job_response(j) for j in jobs])

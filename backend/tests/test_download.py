@@ -169,6 +169,53 @@ def test_download_jobs_batch(client):
     assert all(p.startswith("mock-import/batch/") for p in paths)
 
 
+def test_download_jobs_batch_auto_import_tags(client, gallery):
+    search = client.get("/api/download/search", params={"q": "batch-tags"}).json()
+    item = search["items"][0]
+    res = client.post(
+        "/api/download/jobs/batch",
+        json={
+            "parent_rel_path": "mock-import/batch-auto-tags",
+            "auto_import_remote_tags": True,
+            "items": [
+                {
+                    "source": "wnacg",
+                    "album_id": item["id"],
+                    "title": item["title"],
+                    "import_remote_tags": [],
+                }
+            ],
+        },
+    )
+    assert res.status_code == 200
+    job_id = res.json()["jobs"][0]["id"]
+
+    import time
+
+    job = res.json()["jobs"][0]
+    for _ in range(50):
+        job = client.get(f"/api/download/jobs/{job_id}").json()
+        if job["status"] in {"done", "failed"}:
+            break
+        time.sleep(0.1)
+    assert job["status"] == "done"
+
+    folder_name = job["target_rel_path"].rsplit("/", 1)[-1]
+    nodes = client.get("/api/nodes").json()
+    parent = next(n for n in nodes if n["name"] == "mock-import")
+    batch_parent = next(
+        n for n in client.get("/api/nodes", params={"parent_id": parent["id"]}).json()
+        if n["name"] == "batch-auto-tags"
+    )
+    node = next(
+        n for n in client.get("/api/nodes", params={"parent_id": batch_parent["id"]}).json()
+        if n["name"] == folder_name
+    )
+    tags = client.get(f"/api/tags/nodes/{node['id']}").json()
+    names = {t["name"] for t in tags}
+    assert "mock" in names
+
+
 def test_clear_download_cache(client):
     from app.config import get_settings
 

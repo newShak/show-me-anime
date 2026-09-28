@@ -242,16 +242,33 @@ def album_target_rel_path(parent_rel_path: str, title: str, album_id: str) -> st
     return f"{base}/{folder}" if base else folder
 
 
+def _fetch_detail_remote_tags(source: str, album_id: str, settings: Settings | None = None) -> list[str]:
+    """从外站详情页解析标签（列表/搜索接口通常不含 tags）。"""
+    settings = settings or get_settings()
+    try:
+        adapter = get_adapter(source, settings)
+        detail = adapter.get_detail(album_id)
+    except Exception as exc:
+        logger.warning("fetch remote tags failed source=%s album=%s: %s", source, album_id, exc)
+        return []
+    return [t.strip() for t in (detail.tags or []) if t.strip()]
+
+
 def create_download_jobs_batch(
     items: list[tuple[str, str, str, list[int], list[str]]],
     parent_rel_path: str,
     shared_tag_ids: list[int] | None = None,
+    auto_import_remote_tags: bool = True,
 ) -> list[DownloadJobState]:
     base = _safe_rel_path(parent_rel_path)
     used: set[str] = set()
     jobs: list[DownloadJobState] = []
     shared = list(shared_tag_ids or [])
+    settings = get_settings()
     for source, album_id, title, tag_ids, import_remote_tags in items:
+        remote = [t.strip() for t in (import_remote_tags or []) if t.strip()]
+        if auto_import_remote_tags and not remote:
+            remote = _fetch_detail_remote_tags(source, album_id, settings)
         folder = album_folder_name(title, album_id)
         rel = f"{base}/{folder}" if base else folder
         if rel in used:
@@ -266,7 +283,7 @@ def create_download_jobs_batch(
                 title,
                 rel,
                 tag_ids=merged_tag_ids,
-                import_remote_tags=import_remote_tags,
+                import_remote_tags=remote,
             )
         )
     return jobs

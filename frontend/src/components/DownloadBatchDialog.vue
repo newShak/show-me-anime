@@ -76,11 +76,12 @@ const onSubmit = async () => {
   try {
     const { data } = await createDownloadJobsBatch({
       parent_rel_path: parentPath.value,
+      auto_import_remote_tags: true,
       items: props.items.map((i) => ({
         source: i.source,
         album_id: i.id,
         title: stripTitle(i.title),
-        import_remote_tags: [...(i.tags ?? [])],
+        ...(i.tags?.length ? { import_remote_tags: [...i.tags] } : {}),
       })),
     })
     jobs.value = data.jobs

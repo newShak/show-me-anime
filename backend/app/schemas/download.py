@@ -98,6 +98,8 @@ class DownloadJobBatchCreate(BaseModel):
     items: list[DownloadJobBatchItem] = Field(min_length=1)
     parent_rel_path: str = ""
     tag_ids: list[int] = []
+    # 列表接口通常不带 tags；为 True 时对未指定 import_remote_tags 的项从详情页拉取
+    auto_import_remote_tags: bool = True
 
 
 class DownloadJobResponse(BaseModel):

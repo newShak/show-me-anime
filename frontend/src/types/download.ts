@@ -98,6 +98,8 @@ export type DownloadJobCreate = {
 export type DownloadJobBatchCreate = {
   parent_rel_path: string
   tag_ids?: number[]
+  /** 列表无 tags 时由后端按相册详情拉取外站标签，默认 true */
+  auto_import_remote_tags?: boolean
   items: Pick<DownloadJobCreate, 'source' | 'album_id' | 'title' | 'tag_ids' | 'import_remote_tags'>[]
 }
 
