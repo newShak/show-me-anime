@@ -12,29 +12,18 @@
         <DownloadTagSection ref="tagSectionRef" :show-remote="false" />
       </el-form-item>
     </el-form>
-    <div v-if="jobs.length" class="jobs">
-      <div v-for="job in jobs" :key="job.id" class="job-row">
-        <div class="job-head">
-          <span class="job-title">{{ job.title }}</span>
-          <el-button
-            v-if="job.status === 'failed'"
-            type="primary"
-            link
-            size="small"
-            :loading="retryingId === job.id"
-            @click="onRetryJob(job)"
-          >
-            重试
-          </el-button>
-        </div>
-        <el-progress :percentage="job.progress" :status="jobStatus(job)" :stroke-width="6" />
-        <p v-if="job.message" class="job-msg">{{ job.message }}</p>
-      </div>
+    <div v-if="jobs.length" class="jobs-wrap">
+      <DownloadJobProgress
+        :jobs="jobs"
+        :retrying-id="retryingId"
+        :status="jobStatus"
+        @retry="retryJob"
+      />
     </div>
 
     <template #footer>
       <el-button @click="visible = false">关闭</el-button>
-      <el-button v-if="hasFailed && !running" :loading="retryingAll" @click="onRetryFailed">
+      <el-button v-if="hasFailed && !running" :loading="retryingAll" @click="retryFailed">
         重试失败项
       </el-button>
       <el-button
@@ -52,13 +41,15 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
+import DownloadJobProgress from '@/components/DownloadJobProgress.vue'
 import DownloadPathPicker from '@/components/DownloadPathPicker.vue'
 import DownloadTagSection from '@/components/DownloadTagSection.vue'
+import { useJobPolling } from '@/composables/useJobPolling'
 import { getDownloadParentPath, saveDownloadParentPath } from '@/composables/useDownloadParentPath'
-import { createDownloadJobsBatch, fetchDownloadJob, retryDownloadJob } from '@/api/download'
+import { createDownloadJobsBatch } from '@/api/download'
 import { apiErrorMessage } from '@/api/http'
 import { albumFolderName, joinTargetPath } from '@/utils/downloadPath'
-import type { DownloadJob, RemoteAlbum } from '@/types/download'
+import type { RemoteAlbum } from '@/types/download'
 
 const props = defineProps<{ items: RemoteAlbum[] }>()
 const visible = defineModel<boolean>({ default: false })
@@ -67,13 +58,10 @@ const emit = defineEmits<{ submitted: [] }>()
 const defaultParentPath = () => getDownloadParentPath() || 'imports/wnacg'
 const parentPath = ref(defaultParentPath())
 const submitting = ref(false)
-const retryingId = ref<string | null>(null)
-const retryingAll = ref(false)
-const jobs = ref<DownloadJob[]>([])
 const tagSectionRef = ref<InstanceType<typeof DownloadTagSection> | null>(null)
 
-const running = computed(() => jobs.value.some((j) => j.status === 'running' || j.status === 'pending'))
-const hasFailed = computed(() => jobs.value.some((j) => j.status === 'failed'))
+const { jobs, running, hasFailed, retryingId, retryingAll, jobStatus, pollJobs, retryJob, retryFailed, reset } =
+  useJobPolling()
 
 const batchHint = computed(() => {
   if (!props.items.length) return ''
@@ -82,38 +70,6 @@ const batchHint = computed(() => {
 })
 
 const stripTitle = (title: string) => title.replace(/<[^>]+>/g, '')
-
-const jobStatus = (job: DownloadJob) => {
-  if (job.status === 'failed') return 'exception'
-  if (job.status === 'done') return 'success'
-  return undefined
-}
-
-const updateJob = (data: DownloadJob) => {
-  const idx = jobs.value.findIndex((j) => j.id === data.id)
-  if (idx >= 0) jobs.value[idx] = data
-}
-
-const pollJobs = async () => {
-  for (let round = 0; round < 120; round++) {
-    let pending = false
-    for (let i = 0; i < jobs.value.length; i++) {
-      const job = jobs.value[i]
-      if (job.status === 'done' || job.status === 'failed') continue
-      pending = true
-      const { data } = await fetchDownloadJob(job.id)
-      jobs.value[i] = data
-    }
-    if (!pending) break
-    await new Promise((r) => setTimeout(r, 400))
-  }
-  const failed = jobs.value.filter((j) => j.status === 'failed').length
-  const done = jobs.value.filter((j) => j.status === 'done').length
-  if (done) ElMessage.success(`已完成 ${done} 个下载`)
-  const skipped = jobs.value.filter((j) => j.skipped_files > 0).length
-  if (skipped) ElMessage.warning(`${skipped} 个任务跳过了已存在文件，可在下载记录中强制覆盖`)
-  if (failed) ElMessage.warning(`${failed} 个下载失败，可点击重试`)
-}
 
 const onSubmit = async () => {
   if (!props.items.length) return
@@ -143,41 +99,9 @@ const onSubmit = async () => {
   }
 }
 
-const onRetryJob = async (job: DownloadJob) => {
-  retryingId.value = job.id
-  try {
-    const { data } = await retryDownloadJob(job.id)
-    updateJob(data)
-    await pollJobs()
-  } catch {
-    ElMessage.error('重试失败')
-  } finally {
-    retryingId.value = null
-  }
-}
-
-const onRetryFailed = async () => {
-  const failed = jobs.value.filter((j) => j.status === 'failed')
-  if (!failed.length) return
-  retryingAll.value = true
-  try {
-    for (const job of failed) {
-      const { data } = await retryDownloadJob(job.id)
-      updateJob(data)
-    }
-    await pollJobs()
-  } catch {
-    ElMessage.error('重试失败')
-  } finally {
-    retryingAll.value = false
-  }
-}
-
 const onClosed = () => {
-  jobs.value = []
+  reset()
   parentPath.value = defaultParentPath()
-  retryingId.value = null
-  retryingAll.value = false
   tagSectionRef.value?.reset()
 }
 
@@ -208,40 +132,7 @@ defineExpose({
   color: var(--app-text-muted);
 }
 
-.jobs {
+.jobs-wrap {
   margin-top: 8px;
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-
-.job-row {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.job-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-}
-
-.job-title {
-  flex: 1;
-  min-width: 0;
-  font-size: 12px;
-  color: var(--app-text-muted);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.job-msg {
-  margin: 0;
-  font-size: 11px;
-  color: var(--app-text-muted);
-  line-height: 1.3;
 }
 </style>

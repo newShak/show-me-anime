@@ -7,6 +7,7 @@ from app.services.download.wnacg_cate import cate_info, infer_language_from_titl
 
 PAGE_SIZE = 24
 PREVIEW_BATCH_SIZE = 10
+CHAPTER_PAGE_SIZE = 30
 
 _ITEM_RE = re.compile(r'<li class="li gallary_item">(.*?)</li>', re.DOTALL | re.IGNORECASE)
 _AID_RE = re.compile(r"/photos-index-aid-(\d+)\.html")
@@ -22,7 +23,9 @@ _COVER_RE = re.compile(
 )
 _PAGES_RE = re.compile(r"頁數：\s*(\d+)\s*P")
 _CATEGORY_RE = re.compile(r"分類：\s*([^<]+)")
-_TAG_RE = re.compile(r'<a class="tagshow"[^>]*>([^<]+)</a>', re.IGNORECASE)
+_TAG_RE = re.compile(r'<a class="tagshow"([^>]*)>([^<]+)</a>', re.IGNORECASE)
+_SERIES_COUNT_RE = re.compile(r"章節：\s*(\d+)\s*話")
+_SERIES_BLOCK_RE = re.compile(r'id="sr_pub"', re.IGNORECASE)
 _DOWNLOAD_CONFIG_RE = re.compile(
     r'WORKER_API:\s*"([^"]+)"[\s\S]*?FILE_KEY:\s*"([^"]+)"[\s\S]*?FILE_NAME:\s*"([^"]+)"',
     re.IGNORECASE,
@@ -138,6 +141,30 @@ def detail_page_path(album_id: str, page: int = 1) -> str:
     return f"/photos-index-page-{page}-aid-{album_id}.html"
 
 
+def chapters_api_path(sid: str, page: int = 1) -> str:
+    """合集章节目录 JSON 接口（站方滚动加载用的同一个）。"""
+    return f"/?ctl=download&act=chapters&sid={sid}&page={max(1, page)}"
+
+
+def parse_chapters_payload(data: dict) -> tuple[list[dict[str, str | int]], int]:
+    """解析章节目录 JSON，返回 (章节列表, 总话数)。"""
+    if not isinstance(data, dict) or data.get("code") != 0:
+        raise ValueError("chapters api returned error")
+    chapters: list[dict[str, str | int]] = []
+    for row in data.get("list") or []:
+        if not isinstance(row, dict) or not row.get("id"):
+            continue
+        chapters.append(
+            {
+                "id": str(row["id"]),
+                "index": int(row.get("idx") or 0),
+                "name": str(row.get("name") or "").strip(),
+                "page_count": int(row.get("pages") or 0),
+            }
+        )
+    return chapters, int(data.get("total") or 0)
+
+
 def parse_detail_pagination(html: str) -> dict[str, int]:
     pages = [1]
     for m in re.finditer(r"/photos-index-page-(\d+)-aid-", html, re.I):
@@ -148,6 +175,28 @@ def parse_detail_pagination(html: str) -> dict[str, int]:
     if m:
         current = int(m.group(1))
     return {"current_page": current, "total_pages": total_pages}
+
+
+def parse_series_info(html: str) -> tuple[bool, int]:
+    """合集页用「章節：N 話」替代「頁數：N P」，且没有图片预览区。"""
+    m = _SERIES_COUNT_RE.search(html)
+    if m:
+        return True, int(m.group(1))
+    if _SERIES_BLOCK_RE.search(html):
+        return True, 0
+    return False, 0
+
+
+def parse_tags(html: str) -> list[str]:
+    """标签区；章节目录复用同一 tagshow 样式，按 data-chid 排除。"""
+    tags: list[str] = []
+    for attrs, text in _TAG_RE.findall(html):
+        if "data-chid" in attrs:
+            continue
+        tag = html_lib.unescape(text.strip())
+        if tag:
+            tags.append(tag)
+    return tags
 
 
 def parse_detail(html: str, domain: str) -> dict[str, str | int | list[str]]:
@@ -180,8 +229,9 @@ def parse_detail(html: str, domain: str) -> dict[str, str | int | list[str]]:
     if not language:
         language = infer_language_from_title(title)
 
-    tags = [html_lib.unescape(t.strip()) for t in _TAG_RE.findall(html) if t.strip()]
+    tags = parse_tags(html)
     preview_urls = parse_detail_previews(html, domain)
+    is_series, chapter_count = parse_series_info(html)
     return {
         "title": title,
         "cover_url": cover_url,
@@ -190,6 +240,8 @@ def parse_detail(html: str, domain: str) -> dict[str, str | int | list[str]]:
         "language": language,
         "tags": tags,
         "preview_urls": preview_urls,
+        "is_series": is_series,
+        "chapter_count": chapter_count,
     }
 
 

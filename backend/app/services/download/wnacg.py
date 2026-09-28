@@ -11,13 +11,16 @@ from PIL import Image
 
 from app.config import Settings, get_settings
 from app.services.download.http_client import browser_post_json, download_client, generate_link_headers, is_cloudflare_challenge
-from app.services.download.types import DownloadTarget, PreviewBatch, RemoteAlbum, RemoteBrowseResult, RemoteDetail, RemoteSearchResult, BrowseNavItem
+from app.services.download.types import DownloadTarget, PreviewBatch, RemoteAlbum, RemoteBrowseResult, RemoteChapter, RemoteDetail, RemoteSearchResult, BrowseNavItem
 from app.services.download.wnacg_parse import (
+    CHAPTER_PAGE_SIZE,
     PAGE_SIZE,
     albums_page_path,
+    chapters_api_path,
     detail_page_path,
     normalize_domain,
     parse_albums_total,
+    parse_chapters_payload,
     parse_detail,
     parse_detail_pagination,
     parse_detail_previews,
@@ -32,6 +35,11 @@ logger = logging.getLogger(__name__)
 SOURCE_ID = "wnacg"
 DISPLAY_NAME = "WNA CG"
 DEFAULT_DOMAIN = "www.wn07.ru"
+# 合集章节目录分页上限，仅作死循环保护
+MAX_CHAPTER_PAGES = 40
+# mock 适配器用 id 前缀区分合集与单本
+MOCK_SERIES_PREFIX = "9"
+MOCK_CHAPTER_COUNT = 3
 
 # 搜索页已解析的封面 URL，避免重复拉详情页
 _cover_url_cache: dict[str, str] = {}
@@ -112,14 +120,21 @@ class WnacgAdapter:
         download_page = f"{referer_base}/download-index-aid-{album_id}.html"
         html = self._get_html(f"/download-index-aid-{album_id}.html")
         cfg = parse_download_page(html)
-        url = self._fetch_signed_download_url(
-            album_id,
-            cfg["worker_api"],
-            cfg["file_key"],
-            cfg["file_name"],
-            download_page,
-            referer_base,
-        )
+        try:
+            url = self._fetch_signed_download_url(
+                album_id,
+                cfg["worker_api"],
+                cfg["file_key"],
+                cfg["file_name"],
+                download_page,
+                referer_base,
+            )
+        except ValueError as exc:
+            # 站方在下载页给的无签名直链（地址二），签名被拦时兜底
+            if not cfg["backup_url"]:
+                raise
+            logger.warning("wnacg signed link failed aid=%s, fallback to backup url: %s", album_id, exc)
+            url = cfg["backup_url"]
         cdn_host, signed, has_expiry = _cdn_url_flags(url)
         logger.info(
             "wnacg download aid=%s worker=%s cdn_host=%s signed=%s expiry=%s url=%s",
@@ -312,6 +327,46 @@ class WnacgAdapter:
             _effective_base_cache[self.domain] = f"{res.url.scheme}://{res.url.host}"
             return res.text
 
+    def _get_json(self, path: str) -> dict:
+        with download_client(self.settings) as client:
+            headers = {
+                "Referer": f"{self.base_url}/",
+                "Accept": "application/json, text/plain, */*",
+            }
+            res = client.get(f"{self.base_url}{path}", headers=headers)
+            res.raise_for_status()
+            _effective_base_cache[self.domain] = f"{res.url.scheme}://{res.url.host}"
+            data = res.json()
+            return data if isinstance(data, dict) else {}
+
+    def _live_chapters(self, sid: str) -> list[RemoteChapter]:
+        """拉取合集全部章节（站方 JSON 接口按 30 话分页）。"""
+        chapters: list[RemoteChapter] = []
+        seen: set[str] = set()
+        page = 1
+        while page <= MAX_CHAPTER_PAGES:
+            data = self._get_json(chapters_api_path(sid, page))
+            rows, total = parse_chapters_payload(data)
+            for row in rows:
+                chid = str(row["id"])
+                if chid in seen:
+                    continue
+                seen.add(chid)
+                chapters.append(
+                    RemoteChapter(
+                        id=chid,
+                        index=int(row["index"]),
+                        name=str(row["name"]),
+                        page_count=int(row["page_count"]),
+                    )
+                )
+            limit = int(data.get("limit") or CHAPTER_PAGE_SIZE)
+            if not rows or len(rows) < limit or (total and len(chapters) >= total):
+                break
+            page += 1
+        logger.info("wnacg live chapters sid=%s count=%s pages=%s", sid, len(chapters), page)
+        return chapters
+
     def _live_cover_url(self, album_id: str) -> str:
         html = self._get_html(f"/photos-index-aid-{album_id}.html")
         parsed = parse_detail(html, self.domain)
@@ -382,6 +437,8 @@ class WnacgAdapter:
     def _live_detail(self, album_id: str) -> RemoteDetail:
         html = self._get_html(detail_page_path(album_id, 1))
         parsed = parse_detail(html, self.domain)
+        if parsed.get("is_series"):
+            return self._live_series_detail(album_id, parsed)
         pag = parse_detail_pagination(html)
         urls = list(parsed.get("preview_urls") or [])
         if not urls and parsed.get("cover_url"):
@@ -411,6 +468,37 @@ class WnacgAdapter:
             category=str(parsed["category"]) if parsed.get("category") else None,
             language=str(parsed["language"]) if parsed.get("language") else None,
             tags=list(parsed["tags"]),
+        )
+
+    def _live_series_detail(self, album_id: str, parsed: dict) -> RemoteDetail:
+        """合集自身没有图片，只有章节目录；每一话才是可下载单元。"""
+        chapters = self._live_chapters(album_id)
+        cover_path = _cover_api_path(album_id)
+        cover = str(parsed.get("cover_url") or "")
+        if cover:
+            _cover_url_cache[album_id] = cover
+        # 合集不翻页取缩略图，前端也只展示章节目录
+        _preview_url_cache[album_id] = [cover] if cover else []
+        _preview_meta_cache[album_id] = {
+            "site_page_fetched": 1,
+            "total_site_pages": 1,
+            "page_count": 0,
+        }
+        return RemoteDetail(
+            source=SOURCE_ID,
+            id=album_id,
+            title=str(parsed["title"]),
+            page_count=sum(c.page_count for c in chapters),
+            cover_url=cover_path,
+            preview_urls=[cover_path],
+            preview_has_more=False,
+            preview_total=0,
+            category=str(parsed["category"]) if parsed.get("category") else None,
+            language=str(parsed["language"]) if parsed.get("language") else None,
+            tags=list(parsed["tags"]),
+            is_series=True,
+            chapter_count=int(parsed.get("chapter_count") or len(chapters)),
+            chapters=chapters,
         )
 
     def _mock_browse(self, cate_id: int | None, page: int, page_size: int) -> RemoteBrowseResult:
@@ -466,6 +554,8 @@ class WnacgAdapter:
         return RemoteSearchResult(items=items, total=total, page=page, page_size=page_size)
 
     def _mock_detail(self, album_id: str) -> RemoteDetail:
+        if album_id.startswith(MOCK_SERIES_PREFIX):
+            return self._mock_series_detail(album_id)
         title = f"示例相册 {album_id}"
         pages = 24
         cover_path = _cover_api_path(album_id)
@@ -482,6 +572,34 @@ class WnacgAdapter:
             category="示例分类",
             language="漢化",
             tags=["mock"],
+        )
+
+    def _mock_series_detail(self, album_id: str) -> RemoteDetail:
+        chapters = [
+            RemoteChapter(
+                id=f"{album_id}{i:02d}",
+                index=i,
+                name=f"示例章节 {i}",
+                page_count=10 * i,
+            )
+            for i in range(1, MOCK_CHAPTER_COUNT + 1)
+        ]
+        cover_path = _cover_api_path(album_id)
+        return RemoteDetail(
+            source=SOURCE_ID,
+            id=album_id,
+            title=f"示例合集 {album_id}",
+            page_count=sum(c.page_count for c in chapters),
+            cover_url=cover_path,
+            preview_urls=[cover_path],
+            preview_has_more=False,
+            preview_total=0,
+            category="示例分类",
+            language="漢化",
+            tags=["mock", "合集"],
+            is_series=True,
+            chapter_count=len(chapters),
+            chapters=chapters,
         )
 
     def _mock_preview_batch(self, album_id: str, offset: int, limit: int) -> PreviewBatch:

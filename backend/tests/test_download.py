@@ -352,3 +352,24 @@ def test_cancel_pending_download_job(client):
     body = res.json()
     assert body["status"] == "failed"
     assert body["message"] == "已取消"
+
+
+def test_download_normal_detail_is_not_series(client):
+    search = client.get("/api/download/search", params={"q": "x"}).json()
+    album_id = search["items"][0]["id"]
+    body = client.get("/api/download/detail", params={"id": album_id}).json()
+    assert body["is_series"] is False
+    assert body["chapter_count"] == 0
+    assert body["chapters"] == []
+
+
+def test_download_series_detail_mock(client):
+    body = client.get("/api/download/detail", params={"id": "90001"}).json()
+    assert body["is_series"] is True
+    assert body["chapter_count"] == 3
+    assert len(body["chapters"]) == 3
+    assert [c["index"] for c in body["chapters"]] == [1, 2, 3]
+    assert len({c["id"] for c in body["chapters"]}) == 3
+    assert all(c["name"] for c in body["chapters"])
+    assert all(c["page_count"] > 0 for c in body["chapters"])
+    assert body["page_count"] == sum(c["page_count"] for c in body["chapters"])

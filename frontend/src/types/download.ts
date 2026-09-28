@@ -38,6 +38,13 @@ export type RemoteBrowseResult = {
   nav: BrowseNavItem[]
 }
 
+export type RemoteChapter = {
+  id: string
+  index: number
+  name: string
+  page_count: number
+}
+
 export type RemoteDetail = {
   source: string
   id: string
@@ -50,6 +57,9 @@ export type RemoteDetail = {
   category: string | null
   language: string | null
   tags: string[]
+  is_series: boolean
+  chapter_count: number
+  chapters: RemoteChapter[]
   default_target_rel_path: string
   default_parent_rel_path: string
 }

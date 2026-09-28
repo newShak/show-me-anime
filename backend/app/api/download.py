@@ -16,6 +16,7 @@ from app.schemas.download import (
     DownloadRecordResponse,
     DownloadSourceResponse,
     ProxyTestResponse,
+    RemoteChapterResponse,
     RemoteDetailResponse,
     RemotePreviewBatchResponse,
     RemoteSearchResponse,
@@ -238,6 +239,17 @@ def download_detail(
         category=detail.category,
         language=detail.language,
         tags=detail.tags,
+        is_series=detail.is_series,
+        chapter_count=detail.chapter_count,
+        chapters=[
+            RemoteChapterResponse(
+                id=c.id,
+                index=c.index,
+                name=c.name,
+                page_count=c.page_count,
+            )
+            for c in detail.chapters
+        ],
         default_target_rel_path=rel,
         default_parent_rel_path=parent,
     )

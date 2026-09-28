@@ -47,6 +47,16 @@ class RemoteBrowseResult:
 
 
 @dataclass
+class RemoteChapter:
+    """合集里的一话（本身是独立作品，可单独下载）。"""
+
+    id: str
+    index: int
+    name: str
+    page_count: int = 0
+
+
+@dataclass
 class RemoteDetail:
     source: str
     id: str
@@ -59,6 +69,9 @@ class RemoteDetail:
     category: str | None = None
     language: str | None = None
     tags: list[str] = field(default_factory=list)
+    is_series: bool = False
+    chapter_count: int = 0
+    chapters: list[RemoteChapter] = field(default_factory=list)
 
 
 @dataclass

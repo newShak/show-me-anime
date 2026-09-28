@@ -43,6 +43,13 @@ class RemoteBrowseResponse(BaseModel):
     nav: list[BrowseNavItemResponse] = []
 
 
+class RemoteChapterResponse(BaseModel):
+    id: str
+    index: int
+    name: str
+    page_count: int = 0
+
+
 class RemoteDetailResponse(BaseModel):
     source: str
     id: str
@@ -55,6 +62,9 @@ class RemoteDetailResponse(BaseModel):
     category: str | None = None
     language: str | None = None
     tags: list[str] = []
+    is_series: bool = False
+    chapter_count: int = 0
+    chapters: list[RemoteChapterResponse] = []
     default_target_rel_path: str
     default_parent_rel_path: str = "imports/wnacg"
 
