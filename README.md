@@ -156,12 +156,7 @@ docker tag show-me-anime:latest docker.io/yaliyhub/show-me-anime:latest
 docker push docker.io/yaliyhub/show-me-anime:latest
 ```
 
-可选：同时打版本号 tag，便于回滚：
-
-```bash
-docker tag show-me-anime:latest docker.io/yaliyhub/show-me-anime:1.0.0
-docker push docker.io/yaliyhub/show-me-anime:1.0.0
-```
+版本号 tag 与发版流程见上文 **[发版 checklist](#发版-checklist)**。
 
 > 注意：不要使用 `yaliyHub` 这类大小写混写 tag，Docker 可能将其误判为 registry 地址导致推送失败。
 
@@ -203,6 +198,50 @@ cd ../backend && uvicorn app.main:app --host 0.0.0.0 --port 8000
 cd backend
 ..\.venv\Scripts\pytest -q
 ```
+
+## 发版 checklist
+
+版本号以仓库根目录 **[VERSION](VERSION)** 为唯一来源（SemVer：`主.次.修订`）。导航栏与 `GET /api/health` 的 `version` 字段均来自该文件；发版前改 VERSION，再构建前后端 / 镜像。
+
+| 阶段 | 说明 |
+|------|------|
+| **PATCH** `x.y.z+1` | 仅 bugfix，行为兼容 |
+| **MINOR** `x.y+1.0` | 新功能，默认向后兼容 |
+| **MAJOR** `x+1.0.0` | 破坏性变更（API、数据库迁移、配置删除等） |
+
+自用阶段可长期保持 `0.x.y`；认为 API 与数据形态稳定后再升 `1.0.0`。
+
+### 发版步骤
+
+- [ ] 本周期改动已合并到 `master`（提交信息建议 `feat:` / `fix:` 等，便于回顾）
+- [ ] 更新根目录 **VERSION**（与即将打的 git tag 一致，例如 `0.2.0`）
+- [ ] 后端测试：`cd backend && pytest -q`
+- [ ] 前端构建：`cd frontend && npm run build`
+- [ ] 提交 VERSION 变更（若有）：`git commit -m "chore: release v0.2.0"`
+- [ ] 打 tag 并推送：`git tag v0.2.0` → `git push origin master --tags`（tag 与 VERSION 去掉 `v` 后数值相同）
+- [ ] （可选）写 GitHub Release / 简短变更说明：用户可见功能、升级注意（备份、配置项变更等）
+
+### Docker 镜像
+
+构建与 Hub 推送时，建议**同时**打 `latest` 与**版本号 tag**（版本号读 VERSION，勿用大小写混写的 registry 名）：
+
+```bash
+# 假设 VERSION 为 0.2.0
+docker compose build
+
+docker tag show-me-anime:latest docker.io/yaliyhub/show-me-anime:0.2.0
+docker tag show-me-anime:latest docker.io/yaliyhub/show-me-anime:latest
+docker push docker.io/yaliyhub/show-me-anime:0.2.0
+docker push docker.io/yaliyhub/show-me-anime:latest
+```
+
+### 发版后自检
+
+- [ ] 浏览器导航栏品牌旁显示 **v{VERSION}**
+- [ ] `curl -s http://localhost:8000/api/health` 中 `version` 与 VERSION 一致
+- [ ] 若前后端版本 tooltip 提示「版本不一致」，说明只更新了半边或用了旧静态资源 / 旧镜像，需整包重建或重启
+
+排查用户问题时，优先让对方报：**导航栏版本**、**health 的 version**、**Docker 镜像 tag** 或 **git tag**，三者应对齐。
 
 ## 配置
 

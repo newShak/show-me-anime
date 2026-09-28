@@ -8,7 +8,7 @@
             <el-button text class="toggle-btn" @click="toggleSidebar">×</el-button>
           </div>
           <div class="sidebar-tree">
-            <NodeTree @select="onTreeSelect" />
+            <NodeTree :key="treeKey" @select="onTreeSelect" />
           </div>
         </div>
       </aside>
@@ -32,6 +32,16 @@
               :value="opt.value"
             />
           </el-select>
+          <span class="float-divider" />
+          <el-button
+            text
+            size="small"
+            :disabled="!canMkdir"
+            :loading="mkdirLoading"
+            @click="onMkdir"
+          >
+            新建目录
+          </el-button>
           <template v-if="nodes.length">
             <span class="float-divider" />
             <el-button text size="small" @click="toggleSelectMode">{{ selectMode ? '取消' : '选择' }}</el-button>
@@ -224,6 +234,7 @@ import {
   fetchNodes,
   fetchNodesProgress,
   fetchProgress,
+  createNodeDir,
   deleteNodes,
   moveNodes,
 } from '@/api/nodes'
@@ -235,6 +246,7 @@ import {
   SORT_OPTIONS,
 } from '@/composables/useNodeSort'
 import { saveBrowseScroll, getBrowseScroll, clearBrowseScroll } from '@/composables/useBrowseScroll'
+import { apiErrorMessage } from '@/api/http'
 import { addSearchHistory, type SearchHistoryItem } from '@/composables/useSearchHistory'
 import { fetchFavoriteIds, toggleFavorite } from '@/composables/useFavorites'
 import { touchRecentView } from '@/composables/useRecentView'
@@ -256,6 +268,8 @@ const editNode = ref<NodeItem | null>(null)
 const selectMode = ref(false)
 const selectedIds = ref<number[]>([])
 const deleting = ref(false)
+const mkdirLoading = ref(false)
+const treeKey = ref(0)
 const allTags = ref<TagItem[]>([])
 const nodeTagsMap = ref<Record<number, TagItem[]>>({})
 const progressPercentMap = ref<Record<number, number>>({})
@@ -361,6 +375,16 @@ const subtitle = computed(() => {
 
 const showCrumbs = computed(() => crumbs.value.length > 1)
 
+const mkdirParentId = computed((): number | null => {
+  if (isAlbumView.value) return currentNode.value?.parent_id ?? null
+  return nodeId.value
+})
+
+const canMkdir = computed(() => {
+  if (currentNode.value?.source_type === 'zip') return false
+  return true
+})
+
 const allSelected = computed(
   () => nodes.value.length > 0 && selectedIds.value.length === nodes.value.length,
 )
@@ -386,6 +410,34 @@ const onEditSaved = async (node?: NodeItem) => {
 const toggleSelectMode = () => {
   if (selectMode.value) clearSelection()
   else selectMode.value = true
+}
+
+const onMkdir = async () => {
+  if (!canMkdir.value) return
+  let name = ''
+  try {
+    const { value } = await ElMessageBox.prompt('在当前目录下创建文件夹', '新建目录', {
+      confirmButtonText: '创建',
+      cancelButtonText: '取消',
+      inputPlaceholder: '文件夹名称',
+      inputValidator: (v) => !!v?.trim() || '请输入名称',
+    })
+    name = value.trim()
+  } catch {
+    return
+  }
+
+  mkdirLoading.value = true
+  try {
+    const { data } = await createNodeDir({ parent_id: mkdirParentId.value, name })
+    treeKey.value += 1
+    ElMessage.success(`已创建 ${data.path}`)
+    await loadView(nodeId.value)
+  } catch (e) {
+    ElMessage.error(apiErrorMessage(e, '创建目录失败'))
+  } finally {
+    mkdirLoading.value = false
+  }
 }
 
 const toggleSelect = (id: number) => {

@@ -7,6 +7,7 @@ COPY frontend/package.json frontend/package-lock.json ./
 RUN npm ci
 
 COPY frontend/ ./
+COPY VERSION /app/VERSION
 RUN npm run build
 
 # --- Stage 2: Python 运行镜像（仅保留运行时依赖）---
@@ -26,6 +27,7 @@ RUN apt-get update \
 COPY backend/requirements-prod.txt /app/backend/requirements-prod.txt
 RUN pip install -r /app/backend/requirements-prod.txt
 
+COPY VERSION /app/VERSION
 COPY backend/ /app/backend/
 COPY --from=frontend-build /app/frontend/dist /app/frontend/dist
 

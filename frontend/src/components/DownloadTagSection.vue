@@ -67,8 +67,12 @@ const loadTags = async () => {
   }
 }
 
+const syncRemoteSelection = () => {
+  selectedRemote.value = props.remoteTags.length ? [...props.remoteTags] : []
+}
+
 const selectAllRemote = () => {
-  selectedRemote.value = [...props.remoteTags]
+  syncRemoteSelection()
 }
 
 const clearRemote = () => {
@@ -112,17 +116,12 @@ const getPayload = (): DownloadTagPayload => ({
 })
 
 const reset = () => {
-  selectedRemote.value = []
+  syncRemoteSelection()
   selectedLocalIds.value = []
   newName.value = ''
 }
 
-watch(
-  () => props.remoteTags,
-  () => {
-    selectedRemote.value = []
-  },
-)
+watch(() => props.remoteTags, syncRemoteSelection, { immediate: true })
 
 loadTags()
 

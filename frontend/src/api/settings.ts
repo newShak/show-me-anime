@@ -1,7 +1,7 @@
 import { http } from './http'
 import type { Settings, SettingsSaveResult, SettingsUpdate, ThumbRebuildResult } from '@/types/settings'
 
-export const fetchHealth = () => http.get<{ status: string }>('/health')
+export const fetchHealth = () => http.get<{ status: string; version: string }>('/health')
 
 export const fetchSettings = () => http.get<Settings>('/settings')
 

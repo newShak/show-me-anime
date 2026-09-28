@@ -4,6 +4,7 @@
       <router-link to="/browse" class="brand">
         <span class="logo" />
         show-me-anime
+        <span class="version" :title="versionTitle">v{{ appVersion }}</span>
       </router-link>
       <el-tag size="small" :type="healthOk ? 'success' : 'danger'" class="health">
         {{ healthOk ? '已连接' : '未连接' }}
@@ -39,6 +40,15 @@ const isAdmin = computed(() => route.path.startsWith('/admin'))
 
 const theme = ref<ThemeMode>(getTheme())
 const healthOk = ref(false)
+const serverVersion = ref<string | null>(null)
+
+const appVersion = __APP_VERSION__
+
+const versionTitle = computed(() => {
+  if (!serverVersion.value) return `前端 v${appVersion}`
+  if (serverVersion.value === appVersion) return `v${appVersion}`
+  return `前端 v${appVersion} · 后端 v${serverVersion.value}（版本不一致）`
+})
 
 const onThemeChange = (dark: string | number | boolean) => {
   const mode: ThemeMode = dark ? 'dark' : 'light'
@@ -48,10 +58,12 @@ const onThemeChange = (dark: string | number | boolean) => {
 
 onMounted(async () => {
   try {
-    await fetchHealth()
+    const { data } = await fetchHealth()
     healthOk.value = true
+    serverVersion.value = data.version ?? null
   } catch {
     healthOk.value = false
+    serverVersion.value = null
   }
 })
 </script>
@@ -88,6 +100,13 @@ onMounted(async () => {
   height: 10px;
   border-radius: 50%;
   background: var(--el-color-primary);
+}
+
+.version {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--app-text-muted);
+  letter-spacing: 0;
 }
 
 .health {

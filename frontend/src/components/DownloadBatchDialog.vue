@@ -8,9 +8,6 @@
       <el-form-item label="保存到">
         <DownloadPathPicker v-model="parentPath" :hint="batchHint" />
       </el-form-item>
-      <el-form-item label="标签">
-        <DownloadTagSection ref="tagSectionRef" :show-remote="false" />
-      </el-form-item>
     </el-form>
     <div v-if="jobs.length" class="jobs-wrap">
       <DownloadJobProgress
@@ -43,7 +40,6 @@ import { computed, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import DownloadJobProgress from '@/components/DownloadJobProgress.vue'
 import DownloadPathPicker from '@/components/DownloadPathPicker.vue'
-import DownloadTagSection from '@/components/DownloadTagSection.vue'
 import { useJobPolling } from '@/composables/useJobPolling'
 import { getDownloadParentPath, saveDownloadParentPath } from '@/composables/useDownloadParentPath'
 import { createDownloadJobsBatch } from '@/api/download'
@@ -58,7 +54,6 @@ const emit = defineEmits<{ submitted: [] }>()
 const defaultParentPath = () => getDownloadParentPath() || 'imports/wnacg'
 const parentPath = ref(defaultParentPath())
 const submitting = ref(false)
-const tagSectionRef = ref<InstanceType<typeof DownloadTagSection> | null>(null)
 
 const { jobs, running, hasFailed, retryingId, retryingAll, jobStatus, pollJobs, retryJob, retryFailed, reset } =
   useJobPolling()
@@ -76,14 +71,13 @@ const onSubmit = async () => {
   saveDownloadParentPath(parentPath.value)
   submitting.value = true
   try {
-    const tags = tagSectionRef.value?.getPayload() ?? { tag_ids: [], import_remote_tags: [] }
     const { data } = await createDownloadJobsBatch({
       parent_rel_path: parentPath.value,
-      tag_ids: tags.tag_ids,
       items: props.items.map((i) => ({
         source: i.source,
         album_id: i.id,
         title: stripTitle(i.title),
+        import_remote_tags: [...(i.tags ?? [])],
       })),
     })
     jobs.value = data.jobs
@@ -102,7 +96,6 @@ const onSubmit = async () => {
 const onClosed = () => {
   reset()
   parentPath.value = defaultParentPath()
-  tagSectionRef.value?.reset()
 }
 
 watch(visible, (open) => {
