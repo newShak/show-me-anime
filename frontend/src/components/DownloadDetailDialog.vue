@@ -1,5 +1,5 @@
 <template>
-  <el-dialog v-model="visible" :title="detail?.title ?? '相册详情'" width="820px" @closed="onClosed">
+  <el-dialog v-model="visible" :title="detail?.title ?? '相册详情'" :width="dialogWidth" @closed="onClosed">
     <el-skeleton v-if="loading" :rows="8" animated />
     <template v-else-if="detail">
       <template v-if="isSeries">
@@ -103,6 +103,7 @@ import { apiErrorMessage } from '@/api/http'
 import DownloadJobProgress from '@/components/DownloadJobProgress.vue'
 import DownloadPathPicker from '@/components/DownloadPathPicker.vue'
 import DownloadTagSection from '@/components/DownloadTagSection.vue'
+import { useDialogWidth } from '@/composables/useDialogWidth'
 import { useJobPolling } from '@/composables/useJobPolling'
 import { getDownloadParentPath, saveDownloadParentPath } from '@/composables/useDownloadParentPath'
 import { albumFolderName, joinTargetPath, parentFromTarget } from '@/utils/downloadPath'
@@ -110,6 +111,7 @@ import type { RemoteAlbum, RemoteChapter, RemoteDetail } from '@/types/download'
 
 const props = defineProps<{ item: RemoteAlbum | null; previewBatchSize?: number }>()
 const visible = defineModel<boolean>({ default: false })
+const dialogWidth = useDialogWidth('820px')
 
 const router = useRouter()
 const loading = ref(false)

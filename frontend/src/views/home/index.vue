@@ -119,7 +119,7 @@ onMounted(load)
 .home {
   max-width: var(--app-page-width);
   margin: 0 auto;
-  padding: 32px 32px 60px;
+  padding: 24px var(--app-page-padding) 60px;
 }
 
 .section + .section {

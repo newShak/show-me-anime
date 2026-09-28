@@ -562,9 +562,10 @@ onUnmounted(() => {
 
 .toolbar {
   display: flex;
+  flex-wrap: wrap;
   gap: 12px;
   align-items: center;
-  padding: 16px 24px;
+  padding: 16px var(--app-page-padding);
   background: var(--app-surface);
   border-bottom: 1px solid var(--app-border);
 }
@@ -572,7 +573,23 @@ onUnmounted(() => {
 .content {
   max-width: var(--app-page-width);
   margin: 0 auto;
-  padding: 32px 32px 80px;
+  padding: 24px var(--app-page-padding) 80px;
+}
+
+@media (max-width: 767px) {
+  .toolbar :deep(.search-bar) {
+    flex: 1 1 100%;
+    min-width: 0;
+  }
+
+  .toolbar :deep(.el-select) {
+    flex: 1 1 100%;
+    width: 100% !important;
+  }
+
+  .toolbar .el-button {
+    flex: 1 1 auto;
+  }
 }
 
 .history-panel {

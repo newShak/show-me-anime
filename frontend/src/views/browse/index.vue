@@ -1,7 +1,7 @@
 <template>
-  <div class="browse">
-    <div class="layout" :class="{ collapsed: sidebarCollapsed }">
-      <aside class="sidebar" :class="{ collapsed: sidebarCollapsed }">
+  <div class="browse" :class="{ mobile: isMobile }">
+    <div class="layout" :class="{ collapsed: sidebarCollapsed || isMobile }">
+      <aside v-if="!isMobile" class="sidebar" :class="{ collapsed: sidebarCollapsed }">
         <div class="sidebar-inner">
           <div class="sidebar-head">
             <span>目录</span>
@@ -13,10 +13,20 @@
         </div>
       </aside>
 
+      <el-drawer
+        v-if="isMobile"
+        v-model="treeDrawerOpen"
+        direction="ltr"
+        size="min(280px, 86vw)"
+        title="目录"
+      >
+        <NodeTree :key="treeKey" @select="onTreeSelect" />
+      </el-drawer>
+
       <main class="content">
         <div class="float-bar">
           <el-button text size="small" @click="toggleSidebar">
-            {{ sidebarCollapsed ? '目录' : '收起' }}
+            {{ isMobile || sidebarCollapsed ? '目录' : '收起' }}
           </el-button>
           <span class="float-divider" />
           <el-select
@@ -215,6 +225,7 @@
 
 <script setup lang="ts">
 import { computed, nextTick, onMounted, ref, watch } from 'vue'
+import { useBreakpoint } from '@/composables/useBreakpoint'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Star, StarFilled } from '@element-plus/icons-vue'
@@ -287,6 +298,8 @@ const moving = ref(false)
 const filterTagIds = ref<number[]>([])
 const tagMode = ref<TagSearchMode>('or')
 const favoriteIds = ref<number[]>([])
+const { isMobile } = useBreakpoint()
+const treeDrawerOpen = ref(false)
 const SIDEBAR_KEY = 'sidebar-collapsed'
 const sidebarCollapsed = ref(localStorage.getItem(SIDEBAR_KEY) !== '0')
 let loadSeq = 0
@@ -295,6 +308,10 @@ const sortValue = ref(`${stored.sortBy}:${stored.sortOrder}`)
 const nodeSort = computed(() => parseSortValue(sortValue.value))
 
 const toggleSidebar = () => {
+  if (isMobile.value) {
+    treeDrawerOpen.value = !treeDrawerOpen.value
+    return
+  }
   sidebarCollapsed.value = !sidebarCollapsed.value
   localStorage.setItem(SIDEBAR_KEY, sidebarCollapsed.value ? '1' : '0')
 }
@@ -801,6 +818,7 @@ const goTo = (id: number | null) => {
 }
 
 const onTreeSelect = (id: number | null) => {
+  treeDrawerOpen.value = false
   goTo(id)
 }
 
@@ -869,12 +887,14 @@ onMounted(async () => {
 
 <style scoped>
 .browse {
-  min-height: calc(100vh - 52px);
+  min-height: calc(100vh - var(--app-nav-height));
+  min-height: calc(100dvh - var(--app-nav-height));
 }
 
 .layout {
   display: flex;
-  min-height: calc(100vh - 52px);
+  min-height: calc(100vh - var(--app-nav-height));
+  min-height: calc(100dvh - var(--app-nav-height));
 }
 
 .sidebar {
@@ -894,7 +914,7 @@ onMounted(async () => {
 .sidebar-inner {
   width: 240px;
   height: 100%;
-  min-height: calc(100vh - 52px);
+  min-height: calc(100dvh - var(--app-nav-height));
   padding: 16px 12px;
   display: flex;
   flex-direction: column;
@@ -932,7 +952,7 @@ onMounted(async () => {
 .content {
   flex: 1;
   overflow: auto;
-  padding: 40px 32px 60px;
+  padding: 40px var(--app-page-padding) 60px;
   position: relative;
 }
 
@@ -1050,5 +1070,52 @@ h1 {
   color: var(--app-text-muted);
   text-transform: uppercase;
   letter-spacing: 0.06em;
+}
+
+.browse.mobile .content {
+  padding-top: 24px;
+  padding-bottom: calc(88px + env(safe-area-inset-bottom, 0px));
+}
+
+.browse.mobile .float-bar {
+  top: auto;
+  right: auto;
+  left: 50%;
+  bottom: calc(12px + env(safe-area-inset-bottom, 0px));
+  transform: translateX(-50%);
+  max-width: calc(100vw - 24px);
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  flex-wrap: nowrap;
+  border-radius: 12px;
+}
+
+@media (max-width: 767px) {
+  h1 {
+    font-size: 24px;
+  }
+
+  .title-row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .head-actions {
+    flex-wrap: wrap;
+    justify-content: flex-start;
+  }
+
+  .search-row {
+    flex-wrap: wrap;
+    align-items: stretch;
+  }
+
+  .search-row :deep(.el-select) {
+    width: 100% !important;
+  }
+
+  .float-bar :deep(.el-button) {
+    flex-shrink: 0;
+  }
 }
 </style>

@@ -1,5 +1,5 @@
 <template>
-  <el-dialog v-model="visible" :title="title" width="420px" @closed="reset">
+  <el-dialog v-model="visible" :title="title" :width="dialogWidth" @closed="reset">
     <TagSelect v-model="selectedIds" :tags="selectableTags" placeholder="搜索或选择标签" />
 
     <div class="create-row">
@@ -42,7 +42,10 @@ import { computed, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { createTag } from '@/api/tags'
 import TagSelect from '@/components/TagSelect.vue'
+import { useDialogWidth } from '@/composables/useDialogWidth'
 import type { TagItem } from '@/types/tag'
+
+const dialogWidth = useDialogWidth('420px')
 
 const props = withDefaults(
   defineProps<{

@@ -12,6 +12,9 @@
   --app-text-muted: #8b8ba7;
   --app-cover-bg: #eef0f4;
   --app-page-width: 1080px;
+  --app-page-padding: 32px;
+  --app-nav-height: 52px;
+  --grid-card-min: 200px;
   --app-card-shadow: 0 1px 4px rgba(0, 0, 0, 0.06);
   --app-card-shadow-hover: 0 8px 24px rgba(0, 0, 0, 0.1);
 }
@@ -42,4 +45,29 @@ body {
 
 #app {
   min-height: 100vh;
+  min-height: 100dvh;
+}
+
+@media (max-width: 767px) {
+  :root {
+    --app-page-padding: 16px;
+    --app-nav-height: 48px;
+    --grid-card-min: 136px;
+  }
+}
+
+/* 弹窗在 H5 上留边距 */
+@media (max-width: 767px) {
+  .el-dialog {
+    max-width: calc(100vw - 16px);
+    margin: 8px auto !important;
+  }
+
+  .el-drawer {
+    max-width: 100vw;
+  }
+
+  .nav-drawer .el-drawer__body {
+    padding-bottom: calc(16px + env(safe-area-inset-bottom, 0px));
+  }
 }

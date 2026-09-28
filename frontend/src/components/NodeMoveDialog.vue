@@ -1,5 +1,5 @@
 <template>
-  <el-dialog v-model="visible" :title="title" width="480px" @closed="reset">
+  <el-dialog v-model="visible" :title="title" :width="dialogWidth" @closed="reset">
     <p class="hint">选择目标位置，相册将移动为其子项（可移到文件夹或其他相册内）。</p>
     <div class="root-row">
       <button
@@ -30,6 +30,9 @@
 
 <script setup lang="ts">
 import { ref } from 'vue'
+import { useDialogWidth } from '@/composables/useDialogWidth'
+
+const dialogWidth = useDialogWidth('480px')
 import { fetchNodes } from '@/api/nodes'
 import type { NodeItem } from '@/types/node'
 

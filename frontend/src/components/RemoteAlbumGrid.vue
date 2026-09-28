@@ -79,7 +79,7 @@ const onCardClick = (item: RemoteAlbum) => {
 <style scoped>
 .grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(var(--grid-card-min), 1fr));
   gap: 24px;
 }
 

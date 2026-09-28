@@ -120,6 +120,7 @@ onMounted(() => rootRef.value?.focus())
   align-items: center;
   gap: 12px;
   padding: 8px 16px;
+  padding-top: calc(8px + env(safe-area-inset-top, 0px));
   background: rgba(0, 0, 0, 0.6);
   flex-wrap: wrap;
 }

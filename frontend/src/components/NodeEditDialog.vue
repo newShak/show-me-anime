@@ -1,5 +1,5 @@
 <template>
-  <el-dialog v-model="visible" title="编辑节点" width="600px" @closed="emit('closed')">
+  <el-dialog v-model="visible" title="编辑节点" :width="dialogWidth" @closed="emit('closed')">
     <el-form v-if="node" label-width="88px">
       <el-form-item label="名称">
         <el-input :model-value="node.name" disabled />
@@ -77,6 +77,9 @@ import { ElMessage } from 'element-plus'
 import { coverThumbUrl, fetchCoverCandidates, fetchNodeImages, imageThumbUrl, patchNode } from '@/api/nodes'
 import TagSelect from '@/components/TagSelect.vue'
 import { fetchNodeTags, fetchTags, setNodeTags } from '@/api/tags'
+import { useDialogWidth } from '@/composables/useDialogWidth'
+
+const dialogWidth = useDialogWidth('600px')
 import type { CoverCandidate, ImageItem, NodeItem } from '@/types/node'
 import type { TagItem } from '@/types/tag'
 

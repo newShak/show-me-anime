@@ -1,5 +1,5 @@
 <template>
-  <el-dialog v-model="visible" title="批量下载" width="560px" @closed="onClosed">
+  <el-dialog v-model="visible" title="批量下载" :width="dialogWidth" @closed="onClosed">
     <p class="hint">已选 {{ items.length }} 个相册，将分别保存为子文件夹。</p>
     <ul v-if="!jobs.length" class="list">
       <li v-for="item in items" :key="item.id">{{ stripTitle(item.title) }}</li>
@@ -40,12 +40,15 @@ import { computed, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import DownloadJobProgress from '@/components/DownloadJobProgress.vue'
 import DownloadPathPicker from '@/components/DownloadPathPicker.vue'
+import { useDialogWidth } from '@/composables/useDialogWidth'
 import { useJobPolling } from '@/composables/useJobPolling'
 import { getDownloadParentPath, saveDownloadParentPath } from '@/composables/useDownloadParentPath'
 import { createDownloadJobsBatch } from '@/api/download'
 import { apiErrorMessage } from '@/api/http'
 import { albumFolderName, joinTargetPath } from '@/utils/downloadPath'
 import type { RemoteAlbum } from '@/types/download'
+
+const dialogWidth = useDialogWidth('560px')
 
 const props = defineProps<{ items: RemoteAlbum[] }>()
 const visible = defineModel<boolean>({ default: false })

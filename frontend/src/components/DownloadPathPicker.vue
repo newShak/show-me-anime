@@ -6,7 +6,7 @@
     </div>
     <p v-if="hint" class="hint">{{ hint }}</p>
 
-    <el-dialog v-model="dialogOpen" title="选择保存目录" width="480px" append-to-body @closed="resetDialog">
+    <el-dialog v-model="dialogOpen" title="选择保存目录" :width="dialogWidth" append-to-body @closed="resetDialog">
       <el-input
         v-model="searchQuery"
         clearable
@@ -75,8 +75,11 @@ import { computed, ref } from 'vue'
 import { ElMessage, type ElTree } from 'element-plus'
 import { createNodeDir, fetchNodes } from '@/api/nodes'
 import { searchNodes } from '@/api/search'
+import { useDialogWidth } from '@/composables/useDialogWidth'
 import { getDownloadParentPath, saveDownloadParentPath } from '@/composables/useDownloadParentPath'
 import type { NodeItem } from '@/types/node'
+
+const dialogWidth = useDialogWidth('480px')
 
 const model = defineModel<string>({ default: '' })
 defineProps<{ hint?: string }>()

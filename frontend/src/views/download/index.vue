@@ -230,7 +230,7 @@ onMounted(loadSources)
 .download-page {
   max-width: var(--app-page-width);
   margin: 0 auto;
-  padding: 24px 32px 48px;
+  padding: 24px var(--app-page-padding) 48px;
 }
 
 .head {
