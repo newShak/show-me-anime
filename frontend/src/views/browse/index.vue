@@ -246,6 +246,11 @@ import {
   SORT_OPTIONS,
 } from '@/composables/useNodeSort'
 import { saveBrowseScroll, getBrowseScroll, clearBrowseScroll } from '@/composables/useBrowseScroll'
+import {
+  clearBrowseViewCache,
+  getBrowseViewCache,
+  setBrowseViewCache,
+} from '@/composables/useBrowseViewCache'
 import { apiErrorMessage } from '@/api/http'
 import { addSearchHistory, type SearchHistoryItem } from '@/composables/useSearchHistory'
 import { fetchFavoriteIds, toggleFavorite } from '@/composables/useFavorites'
@@ -431,6 +436,7 @@ const onMkdir = async () => {
   try {
     const { data } = await createNodeDir({ parent_id: mkdirParentId.value, name })
     treeKey.value += 1
+    clearBrowseViewCache()
     ElMessage.success(`已创建 ${data.path}`)
     await loadView(nodeId.value)
   } catch (e) {
@@ -526,6 +532,7 @@ const onMoveConfirm = async (targetParentId: number | null) => {
     movePickerOpen.value = false
     moveNodeIds.value = []
     clearSelection()
+    clearBrowseViewCache()
     await loadView(nodeId.value)
   } catch {
     ElMessage.error('移动失败')
@@ -619,6 +626,7 @@ const onDeleteNode = async (node: NodeItem) => {
     } else {
       ElMessage.success('已删除')
     }
+    clearBrowseViewCache()
     await loadView(nodeId.value)
   } catch {
     ElMessage.error('删除失败')
@@ -649,6 +657,7 @@ const onBatchDelete = async () => {
       ElMessage.success(`已删除 ${data.deleted} 项`)
     }
     clearSelection()
+    clearBrowseViewCache()
     await loadView(nodeId.value)
   } catch {
     ElMessage.error('删除失败')
@@ -672,19 +681,41 @@ const loadCrumbs = async (node: NodeItem | null) => {
   ]
 }
 
-const applyBrowseScroll = async () => {
-  const top = getBrowseScroll(nodeId.value)
-  if (top == null) return
+const applyScrollY = async (top: number) => {
   await nextTick()
   await new Promise<void>((r) => requestAnimationFrame(() => r()))
   window.scrollTo(0, top)
+}
+
+const applyBrowseScroll = async () => {
+  const top = getBrowseScroll(nodeId.value)
+  if (top == null) return
+  await applyScrollY(top)
   clearBrowseScroll(nodeId.value)
+}
+
+const finishScrollRestore = async (id: number | null, scrollTarget: number | null) => {
+  if (scrollTarget == null) return
+  await applyScrollY(scrollTarget)
+  clearBrowseScroll(id)
+}
+
+const cacheCurrentView = () => {
+  const sort = nodeSort.value
+  setBrowseViewCache(nodeId.value, sort, {
+    nodes: nodes.value,
+    images: images.value,
+    currentNode: currentNode.value,
+    scrollY: window.scrollY,
+    sort,
+  })
+  saveBrowseScroll(nodeId.value)
 }
 
 const BATCH_SIZE = 36
 
-const applyNodes = async (items: NodeItem[], seq: number) => {
-  if (items.length <= BATCH_SIZE) {
+const applyNodes = async (items: NodeItem[], seq: number, immediate = false) => {
+  if (immediate || items.length <= BATCH_SIZE) {
     nodes.value = items
     return
   }
@@ -709,20 +740,33 @@ const loadViewMeta = (node: NodeItem | null) => {
 const loadView = async (id: number | null) => {
   const seq = ++loadSeq
   const sort = nodeSort.value
-  nodes.value = []
-  images.value = []
-  if (id == null) currentNode.value = null
-  else if (currentNode.value?.id !== id) currentNode.value = null
-  if (getBrowseScroll(id) == null) window.scrollTo(0, 0)
+  const cached = getBrowseViewCache(id, sort)
+  const scrollTarget = getBrowseScroll(id) ?? cached?.scrollY ?? null
+  const restoreScroll = scrollTarget != null
+
+  if (cached) {
+    nodes.value = cached.nodes
+    images.value = cached.images
+    currentNode.value = cached.currentNode
+  } else {
+    nodes.value = []
+    images.value = []
+    if (id == null) currentNode.value = null
+    else if (currentNode.value?.id !== id) currentNode.value = null
+  }
+
+  if (!restoreScroll) window.scrollTo(0, 0)
+  else if (cached) await applyScrollY(scrollTarget!)
 
   if (id == null) {
     const { data } = await fetchNodes(undefined, sort)
     if (seq !== loadSeq) return
     currentNode.value = null
-    await applyNodes(data, seq)
+    await applyNodes(data, seq, restoreScroll)
     if (seq !== loadSeq) return
     crumbs.value = [{ id: null, name: '画廊' }]
     loadViewMeta(null)
+    await finishScrollRestore(id, scrollTarget)
     return
   }
 
@@ -733,9 +777,10 @@ const loadView = async (id: number | null) => {
   currentNode.value = node
 
   if (node.node_type === 'container') {
-    await applyNodes(childrenRes.data, seq)
+    await applyNodes(childrenRes.data, seq, restoreScroll)
     if (seq !== loadSeq) return
     loadViewMeta(node)
+    await finishScrollRestore(id, scrollTarget)
     return
   }
 
@@ -743,13 +788,15 @@ const loadView = async (id: number | null) => {
   if (seq !== loadSeq) return
 
   images.value = imagesRes.data.items
-  await applyNodes(node.node_type === 'both' ? childrenRes.data : [], seq)
+  await applyNodes(node.node_type === 'both' ? childrenRes.data : [], seq, restoreScroll)
   if (seq !== loadSeq) return
   loadViewMeta(node)
+  await finishScrollRestore(id, scrollTarget)
 }
 
 const goTo = (id: number | null) => {
   clearSelection()
+  cacheCurrentView()
   router.push(id == null ? '/browse' : `/browse/${id}`)
 }
 
@@ -775,7 +822,7 @@ const onToggleCurrentFavorite = async () => {
 
 const openReader = (page = 0) => {
   if (!currentNode.value) return
-  saveBrowseScroll(nodeId.value)
+  cacheCurrentView()
   router.push({
     path: `/reader/${currentNode.value.id}`,
     query: { page, mode: 'scroll' },
