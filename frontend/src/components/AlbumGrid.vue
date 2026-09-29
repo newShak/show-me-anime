@@ -55,32 +55,36 @@
           <el-tag v-for="tag in tagsOf(node.id)" :key="tag.id" size="small">{{ tag.name }}</el-tag>
         </div>
       </div>
-      <el-dropdown
+      <button
         v-if="showMenu"
-        class="card-menu"
-        trigger="click"
-        @command="(cmd: string) => onMenu(node, cmd)"
+        type="button"
+        class="card-menu more-btn"
+        aria-label="更多操作"
+        @click.stop="openMenu(node, $event)"
       >
-        <button type="button" class="more-btn" aria-label="更多操作" @click.stop>
-          <el-icon><MoreFilled /></el-icon>
-        </button>
-        <template #dropdown>
-          <el-dropdown-menu>
-            <el-dropdown-item command="edit">编辑</el-dropdown-item>
-            <el-dropdown-item command="add-tags">标签</el-dropdown-item>
-            <el-dropdown-item command="move">移动到…</el-dropdown-item>
-            <el-dropdown-item divided command="delete">
-              <span class="danger">删除</span>
-            </el-dropdown-item>
-          </el-dropdown-menu>
-        </template>
-      </el-dropdown>
+        <el-icon><MoreFilled /></el-icon>
+      </button>
     </article>
   </div>
   <el-empty v-else description="暂无内容，请先扫描或添加文件夹" class="empty" />
+
+  <Teleport to="body">
+    <div
+      v-if="menu"
+      class="menu-pop"
+      :style="{ top: `${menu.y}px`, left: `${menu.x}px` }"
+      @click.stop
+    >
+      <button type="button" @click="pickMenu('edit')">编辑</button>
+      <button type="button" @click="pickMenu('add-tags')">标签</button>
+      <button type="button" @click="pickMenu('move')">移动到…</button>
+      <button type="button" class="danger" @click="pickMenu('delete')">删除</button>
+    </div>
+  </Teleport>
 </template>
 
 <script setup lang="ts">
+import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { MoreFilled } from '@element-plus/icons-vue'
 import LazyCover from '@/components/LazyCover.vue'
 import type { NodeItem } from '@/types/node'
@@ -111,9 +115,36 @@ const emit = defineEmits<{
   'toggle-favorite': [node: NodeItem]
 }>()
 
-const isSelected = (id: number) => props.selectedIds?.includes(id) ?? false
-const isFavorite = (id: number) => props.favoriteIds?.includes(id) ?? false
+const favoriteSet = computed(() => new Set(props.favoriteIds ?? []))
+const selectedSet = computed(() => new Set(props.selectedIds ?? []))
+
+const isSelected = (id: number) => selectedSet.value.has(id)
+const isFavorite = (id: number) => favoriteSet.value.has(id)
 const tagsOf = (nodeId: number) => props.nodeTags?.[nodeId] ?? []
+
+const menu = ref<{ node: NodeItem; x: number; y: number } | null>(null)
+
+const openMenu = (node: NodeItem, e: MouseEvent) => {
+  const el = e.currentTarget as HTMLElement
+  const r = el.getBoundingClientRect()
+  menu.value = { node, x: Math.max(8, r.right - 120), y: r.bottom + 4 }
+}
+
+const closeMenu = () => {
+  menu.value = null
+}
+
+const pickMenu = (cmd: string) => {
+  const node = menu.value?.node
+  if (!node) return
+  onMenu(node, cmd)
+  closeMenu()
+}
+
+const onDocClick = () => closeMenu()
+
+onMounted(() => document.addEventListener('click', onDocClick))
+onUnmounted(() => document.removeEventListener('click', onDocClick))
 
 const progressText = (node: NodeItem) => {
   if (node.node_type === 'container' || node.image_count <= 0) return ''
@@ -306,7 +337,7 @@ const subText = (node: NodeItem) => {
   z-index: 5;
 }
 
-.card-menu :deep(.more-btn) {
+.more-btn {
   display: flex;
   align-items: center;
   justify-content: center;
@@ -323,8 +354,40 @@ const subText = (node: NodeItem) => {
   transition: color 0.15s ease;
 }
 
-.card-menu :deep(.more-btn:hover) {
+.more-btn:hover {
   color: var(--app-text);
+}
+
+.menu-pop {
+  position: fixed;
+  z-index: 3000;
+  min-width: 120px;
+  padding: 4px;
+  border: 1px solid var(--app-border);
+  border-radius: 8px;
+  background: var(--app-surface);
+  box-shadow: var(--app-card-shadow-hover);
+}
+
+.menu-pop button {
+  display: block;
+  width: 100%;
+  padding: 8px 12px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--app-text);
+  font-size: 14px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.menu-pop button:hover {
+  background: color-mix(in srgb, var(--el-color-primary) 10%, transparent);
+}
+
+.menu-pop button.danger {
+  color: var(--el-color-danger);
 }
 
 .danger {

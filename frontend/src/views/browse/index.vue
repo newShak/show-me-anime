@@ -176,23 +176,26 @@
               />
             </template>
             <template v-else>
-              <AlbumGrid
-                :nodes="nodes"
-                :selectable="selectMode"
-                :selected-ids="selectedIds"
-                :node-tags="nodeTagsMap"
-                :progress-map="progressPercentMap"
-                :favorite-ids="favoriteIds"
-                show-menu
-                show-favorite
-                @toggle="toggleSelect"
-                @open="onOpenNode"
-                @toggle-favorite="onToggleFavorite"
-                @edit="openEdit"
-                @add-tags="(node) => openTagPicker([node.id])"
-                @move="(node) => openMovePicker([node.id])"
-                @delete="onDeleteNode"
-              />
+              <KeepAlive :max="12">
+                <AlbumGrid
+                  :key="`grid-${nodeId ?? 'root'}`"
+                  :nodes="nodes"
+                  :selectable="selectMode"
+                  :selected-ids="selectedIds"
+                  :node-tags="nodeTagsMap"
+                  :progress-map="progressPercentMap"
+                  :favorite-ids="favoriteIds"
+                  show-menu
+                  show-favorite
+                  @toggle="toggleSelect"
+                  @open="onOpenNode"
+                  @toggle-favorite="onToggleFavorite"
+                  @edit="openEdit"
+                  @add-tags="(node) => openTagPicker([node.id])"
+                  @move="(node) => openMovePicker([node.id])"
+                  @delete="onDeleteNode"
+                />
+              </KeepAlive>
             </template>
           </section>
         </div>
@@ -255,6 +258,7 @@ import {
   parseSortValue,
   saveSort,
   SORT_OPTIONS,
+  type NodeSort,
 } from '@/composables/useNodeSort'
 import { saveBrowseScroll, getBrowseScroll, clearBrowseScroll } from '@/composables/useBrowseScroll'
 import {
@@ -704,13 +708,6 @@ const applyScrollY = async (top: number) => {
   window.scrollTo(0, top)
 }
 
-const applyBrowseScroll = async () => {
-  const top = getBrowseScroll(nodeId.value)
-  if (top == null) return
-  await applyScrollY(top)
-  clearBrowseScroll(nodeId.value)
-}
-
 const finishScrollRestore = async (id: number | null, scrollTarget: number | null) => {
   if (scrollTarget == null) return
   await applyScrollY(scrollTarget)
@@ -731,8 +728,11 @@ const cacheCurrentView = () => {
 
 const BATCH_SIZE = 36
 
-const applyNodes = async (items: NodeItem[], seq: number, immediate = false) => {
-  if (immediate || items.length <= BATCH_SIZE) {
+const nodeListSame = (a: NodeItem[], b: NodeItem[]) =>
+  a.length === b.length && a.every((item, i) => item.id === b[i]?.id)
+
+const applyNodes = async (items: NodeItem[], seq: number) => {
+  if (items.length <= BATCH_SIZE) {
     nodes.value = items
     return
   }
@@ -744,14 +744,67 @@ const applyNodes = async (items: NodeItem[], seq: number, immediate = false) => 
   }
 }
 
-const loadViewMeta = (node: NodeItem | null) => {
+const refreshTagsIfNeeded = () => {
+  const ids = nodes.value.map((n) => n.id)
+  if (currentNode.value) ids.push(currentNode.value.id)
+  const unique = [...new Set(ids)]
+  if (unique.length && unique.every((id) => id in nodeTagsMap.value)) return
+  return loadNodeTags(unique)
+}
+
+const loadProgressIfNeeded = () => {
+  const albums = nodes.value.filter((n) => n.node_type !== 'container' && n.image_count > 0)
+  if (!albums.length) return
+  if (albums.every((a) => a.id in progressPercentMap.value)) return
+  return loadProgress()
+}
+
+const loadViewMeta = (node: NodeItem | null, fromCache = false) => {
   const run = () => {
     void loadCrumbs(node)
-    void refreshTags()
-    void loadProgress()
+    if (fromCache) {
+      void refreshTagsIfNeeded()
+      void loadProgressIfNeeded()
+    } else {
+      void refreshTags()
+      void loadProgress()
+    }
   }
   if (typeof requestIdleCallback === 'function') requestIdleCallback(run)
   else setTimeout(run, 0)
+}
+
+const revalidateView = async (
+  id: number,
+  seq: number,
+  sort: NodeSort,
+  scrollTarget: number | null,
+) => {
+  try {
+    const [nodeRes, childrenRes] = await Promise.all([fetchNode(id), fetchNodes(id, sort)])
+    if (seq !== loadSeq) return
+    const node = nodeRes.data
+    currentNode.value = node
+
+    if (node.node_type === 'container') {
+      if (!nodeListSame(nodes.value, childrenRes.data)) {
+        await applyNodes(childrenRes.data, seq)
+        if (scrollTarget != null) await applyScrollY(scrollTarget)
+      }
+      return
+    }
+
+    const imagesRes = await fetchNodeImages(id)
+    if (seq !== loadSeq) return
+    images.value = imagesRes.data.items
+    const sub = node.node_type === 'both' ? childrenRes.data : []
+    if (!nodeListSame(nodes.value, sub)) {
+      await applyNodes(sub, seq)
+      if (scrollTarget != null) await applyScrollY(scrollTarget)
+    }
+  } catch {
+    /* 后台刷新失败不影响已展示的缓存 */
+  }
 }
 
 const loadView = async (id: number | null) => {
@@ -775,11 +828,18 @@ const loadView = async (id: number | null) => {
   if (!restoreScroll) window.scrollTo(0, 0)
   else if (cached) await applyScrollY(scrollTarget!)
 
+  if (cached && id != null) {
+    loadViewMeta(currentNode.value, true)
+    if (scrollTarget != null) await finishScrollRestore(id, scrollTarget)
+    void revalidateView(id, seq, sort, scrollTarget)
+    return
+  }
+
   if (id == null) {
     const { data } = await fetchNodes(undefined, sort)
     if (seq !== loadSeq) return
     currentNode.value = null
-    await applyNodes(data, seq, restoreScroll)
+    await applyNodes(data, seq)
     if (seq !== loadSeq) return
     crumbs.value = [{ id: null, name: '画廊' }]
     loadViewMeta(null)
@@ -794,7 +854,7 @@ const loadView = async (id: number | null) => {
   currentNode.value = node
 
   if (node.node_type === 'container') {
-    await applyNodes(childrenRes.data, seq, restoreScroll)
+    await applyNodes(childrenRes.data, seq)
     if (seq !== loadSeq) return
     loadViewMeta(node)
     await finishScrollRestore(id, scrollTarget)
@@ -805,7 +865,7 @@ const loadView = async (id: number | null) => {
   if (seq !== loadSeq) return
 
   images.value = imagesRes.data.items
-  await applyNodes(node.node_type === 'both' ? childrenRes.data : [], seq, restoreScroll)
+  await applyNodes(node.node_type === 'both' ? childrenRes.data : [], seq)
   if (seq !== loadSeq) return
   loadViewMeta(node)
   await finishScrollRestore(id, scrollTarget)
@@ -875,7 +935,7 @@ const startRead = async () => {
 
 watch(nodeId, (id, prev) => {
   if (id != null && id !== prev) touchRecentView(id)
-  void loadView(id).then(() => applyBrowseScroll())
+  void loadView(id)
 }, { immediate: true })
 
 onMounted(async () => {
