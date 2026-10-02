@@ -9,6 +9,7 @@ import uuid
 from pathlib import Path
 
 from PIL import Image
+from sqlalchemy.exc import OperationalError
 
 from app.config import Settings, get_settings
 from app.db.session import SessionLocal, get_engine
@@ -61,12 +62,52 @@ def _run_semaphore() -> threading.Semaphore:
     return _run_sem
 
 
+_DB_LOCK_RETRIES = 12
+_DB_LOCK_BASE_SLEEP = 0.05
+
+_progress_throttle: dict[str, tuple[float, int]] = {}
+
+
 def _persist(job_id: str, **kwargs) -> None:
-    db = SessionLocal(bind=get_engine())
-    try:
-        update_record(db, job_id, **kwargs)
-    finally:
-        db.close()
+    last_exc: Exception | None = None
+    for attempt in range(_DB_LOCK_RETRIES):
+        db = SessionLocal(bind=get_engine())
+        try:
+            update_record(db, job_id, **kwargs)
+            return
+        except OperationalError as exc:
+            last_exc = exc
+            if "locked" not in str(exc).lower() and "busy" not in str(exc).lower():
+                raise
+            db.rollback()
+            time.sleep(_DB_LOCK_BASE_SLEEP * (attempt + 1))
+        finally:
+            db.close()
+    if last_exc:
+        logger.warning("download persist gave up job_id=%s: %s", job_id, last_exc)
+        raise last_exc
+
+
+def _should_throttle_progress_persist(job_id: str, kwargs: dict) -> bool:
+    """进度轮询不必每次写库，减轻与扫描长事务争锁。"""
+    if kwargs.get("status") in {"done", "failed", "pending", "running"}:
+        return False
+    if set(kwargs.keys()) - {"progress", "message"}:
+        return False
+    prog = kwargs.get("progress")
+    if prog is None:
+        return False
+    now = time.time()
+    with _lock:
+        last = _progress_throttle.get(job_id)
+        if last is None:
+            _progress_throttle[job_id] = (now, int(prog))
+            return False
+        t, prev = last
+        if now - t >= 1.0 or abs(int(prog) - prev) >= 8:
+            _progress_throttle[job_id] = (now, int(prog))
+            return False
+    return True
 
 
 def _insert_record(job: DownloadJobState) -> None:
@@ -256,7 +297,14 @@ def _update(job_id: str, **kwargs) -> None:
         if job is not None:
             for key, val in kwargs.items():
                 setattr(job, key, val)
-    _persist(job_id, **kwargs)
+    if _should_throttle_progress_persist(job_id, kwargs):
+        return
+    try:
+        _persist(job_id, **kwargs)
+    except OperationalError:
+        if kwargs.get("status") not in {"done", "failed"}:
+            return
+        raise
 
 
 def default_target_rel_path(source: str, title: str, album_id: str, settings: Settings | None = None) -> str:

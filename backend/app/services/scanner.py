@@ -19,6 +19,9 @@ from app.utils.paths import archive_display_name, is_archive_file, is_image_file
 
 logger = logging.getLogger(__name__)
 
+# 扫描过程中分批提交，避免长时间独占 SQLite 写锁
+_SCAN_COMMIT_BATCH = 40
+
 
 class Scanner:
     def __init__(self, settings: Settings | None = None):
@@ -66,7 +69,7 @@ class Scanner:
             metas.sort(key=lambda item: item["path"].count("/"))
             seen: set[str] = set()
 
-            for meta in metas:
+            for idx, meta in enumerate(metas, start=1):
                 path_str = meta["path"]
                 seen.add(path_str)
                 parent_id = self._resolve_parent_id(db, path_str)
@@ -119,6 +122,9 @@ class Scanner:
                     node.updated_at = time.time()
                     job.updated += 1
                     sync_node_search_index(db, node)
+
+                if idx % _SCAN_COMMIT_BATCH == 0:
+                    db.commit()
 
             stale = [node for path_str, node in existing.items() if path_str not in seen]
             if stale:
