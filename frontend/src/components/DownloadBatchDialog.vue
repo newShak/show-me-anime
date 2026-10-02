@@ -1,6 +1,8 @@
 <template>
   <el-dialog v-model="visible" title="批量下载" :width="dialogWidth" @closed="onClosed">
-    <p class="hint">已选 {{ items.length }} 个相册，将分别保存为子文件夹。</p>
+    <p class="hint">
+      已选 {{ items.length }} 个条目，单本各一个文件夹；合集将自动下载全部章节到子文件夹。
+    </p>
     <ul v-if="!jobs.length" class="list">
       <li v-for="item in items" :key="item.id">{{ stripTitle(item.title) }}</li>
     </ul>

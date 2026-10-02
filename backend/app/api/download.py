@@ -10,6 +10,8 @@ from app.schemas.download import (
     DownloadJobCreate,
     DownloadJobBatchCreate,
     DownloadJobBatchResponse,
+    DownloadJobRetryAllResponse,
+    DownloadJobRetryResponse,
     DownloadJobResponse,
     DownloadOptionsResponse,
     DownloadRecordListResponse,
@@ -37,10 +39,11 @@ from app.services.download.jobs import (
     overwrite_download_job,
     reconcile_stale_download_jobs,
     resume_download_job,
+    retry_all_failed_download_jobs,
     retry_download_job,
     _safe_rel_path,
 )
-from app.services.download.records import list_records
+from app.services.download.records import count_failed_records, list_records
 from app.services.download.registry import get_adapter, list_sources
 from app.services.download.size import record_size_bytes
 from app.services.download.transfer import is_job_resumable
@@ -64,6 +67,13 @@ def _job_response(job) -> DownloadJobResponse:
         saved_files=job.saved_files,
         skipped_files=job.skipped_files,
         target_existed=job.target_existed,
+    )
+
+
+def _retry_response(result) -> DownloadJobRetryResponse:
+    return DownloadJobRetryResponse(
+        job=_job_response(result.job),
+        spawned_jobs=[_job_response(j) for j in result.spawned_jobs],
     )
 
 
@@ -148,6 +158,7 @@ def download_records(
         page=page,
         page_size=page_size,
         page_total_bytes=page_total_bytes,
+        failed_total=count_failed_records(db),
     )
 
 
@@ -351,6 +362,17 @@ def start_download_jobs_batch(body: DownloadJobBatchCreate) -> DownloadJobBatchR
     return DownloadJobBatchResponse(jobs=[_job_response(j) for j in jobs])
 
 
+@router.post("/jobs/retry-failed", response_model=DownloadJobRetryAllResponse)
+def retry_all_failed_download_jobs_api() -> DownloadJobRetryAllResponse:
+    result = retry_all_failed_download_jobs()
+    return DownloadJobRetryAllResponse(
+        retried=result.retried,
+        spawned=result.spawned,
+        skipped=result.skipped,
+        errors=result.errors,
+    )
+
+
 @router.get("/jobs/{job_id}", response_model=DownloadJobResponse)
 def get_download_job(job_id: str, db: Session = Depends(get_db)) -> DownloadJobResponse:
     reconcile_stale_download_jobs(db)
@@ -360,22 +382,22 @@ def get_download_job(job_id: str, db: Session = Depends(get_db)) -> DownloadJobR
     return _job_response(job)
 
 
-@router.post("/jobs/{job_id}/resume", response_model=DownloadJobResponse)
-def resume_download_job_api(job_id: str) -> DownloadJobResponse:
+@router.post("/jobs/{job_id}/resume", response_model=DownloadJobRetryResponse)
+def resume_download_job_api(job_id: str) -> DownloadJobRetryResponse:
     try:
-        job = resume_download_job(job_id)
+        result = resume_download_job(job_id)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
-    return _job_response(job)
+    return _retry_response(result)
 
 
-@router.post("/jobs/{job_id}/retry", response_model=DownloadJobResponse)
-def retry_download_job_api(job_id: str) -> DownloadJobResponse:
+@router.post("/jobs/{job_id}/retry", response_model=DownloadJobRetryResponse)
+def retry_download_job_api(job_id: str) -> DownloadJobRetryResponse:
     try:
-        job = retry_download_job(job_id)
+        result = retry_download_job(job_id)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
-    return _job_response(job)
+    return _retry_response(result)
 
 
 @router.post("/jobs/{job_id}/cancel", response_model=DownloadJobResponse)

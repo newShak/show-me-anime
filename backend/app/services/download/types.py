@@ -93,6 +93,24 @@ class DownloadTarget:
 
 
 @dataclass
+class RetryJobResult:
+    """重试结果；合集失败任务会拆成多条章节任务。"""
+
+    job: "DownloadJobState"
+    spawned_jobs: list["DownloadJobState"] = field(default_factory=list)
+
+
+@dataclass
+class RetryAllFailedResult:
+    """批量重试全部失败任务的结果。"""
+
+    retried: int = 0
+    spawned: int = 0
+    skipped: int = 0
+    errors: list[str] = field(default_factory=list)
+
+
+@dataclass
 class DownloadJobState:
     id: str
     source: str

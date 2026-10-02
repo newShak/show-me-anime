@@ -5,6 +5,8 @@ import type {
   DownloadJobBatchCreate,
   DownloadJobBatchResult,
   DownloadJobCreate,
+  DownloadJobRetryAllResult,
+  DownloadJobRetryResult,
   DownloadOptions,
   DownloadRecordList,
   DownloadSource,
@@ -84,13 +86,16 @@ export const createDownloadJobsBatch = (body: DownloadJobBatchCreate) =>
 export const fetchDownloadJob = (jobId: string) => http.get<DownloadJob>(`/download/jobs/${jobId}`)
 
 export const resumeDownloadJob = (jobId: string) =>
-  http.post<DownloadJob>(`/download/jobs/${jobId}/resume`)
+  http.post<DownloadJobRetryResult>(`/download/jobs/${jobId}/resume`)
 
 export const cancelDownloadJob = (jobId: string) =>
   http.post<DownloadJob>(`/download/jobs/${jobId}/cancel`)
 
 export const retryDownloadJob = (jobId: string) =>
-  http.post<DownloadJob>(`/download/jobs/${jobId}/retry`)
+  http.post<DownloadJobRetryResult>(`/download/jobs/${jobId}/retry`)
+
+export const retryAllFailedDownloadJobs = () =>
+  http.post<DownloadJobRetryAllResult>('/download/jobs/retry-failed')
 
 export const overwriteDownloadJob = (jobId: string) =>
   http.post<DownloadJob>(`/download/jobs/${jobId}/overwrite`)

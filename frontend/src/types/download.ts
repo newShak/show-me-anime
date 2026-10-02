@@ -107,6 +107,11 @@ export type DownloadJobBatchResult = {
   jobs: DownloadJob[]
 }
 
+export type DownloadJobRetryResult = {
+  job: DownloadJob
+  spawned_jobs: DownloadJob[]
+}
+
 export type DownloadOptions = {
   preview_batch_size: number
   concurrency: number
@@ -137,6 +142,14 @@ export type DownloadRecordList = {
   page: number
   page_size: number
   page_total_bytes: number
+  failed_total: number
+}
+
+export type DownloadJobRetryAllResult = {
+  retried: number
+  spawned: number
+  skipped: number
+  errors: string[]
 }
 
 export type DownloadCacheClearResult = {

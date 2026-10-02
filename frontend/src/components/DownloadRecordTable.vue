@@ -10,7 +10,18 @@
           {{ opt.label }}
         </el-radio-button>
       </el-radio-group>
-      <span v-if="pageTotalBytes > 0" class="size-summary">本页合计 {{ formatBytes(pageTotalBytes) }}</span>
+      <div class="toolbar-right">
+        <el-button
+          v-if="failedTotal > 0"
+          type="primary"
+          size="small"
+          :loading="retryingAll"
+          @click="emit('retry-all-failed')"
+        >
+          全部重试 ({{ failedTotal }})
+        </el-button>
+        <span v-if="pageTotalBytes > 0" class="size-summary">本页合计 {{ formatBytes(pageTotalBytes) }}</span>
+      </div>
     </div>
     <el-table v-loading="loading" :data="items" :size="isFullscreen ? 'default' : 'small'" stripe empty-text="暂无记录">
       <el-table-column label="标题" :min-width="isFullscreen ? 200 : 120" show-overflow-tooltip>
@@ -118,7 +129,9 @@ defineProps<{
   page: number
   pageSize: number
   statusFilter: DownloadRecordStatusFilter
+  failedTotal: number
   retryingId: string | null
+  retryingAll: boolean
   overwritingId: string | null
   cancellingId: string | null
   deletingId: string | null
@@ -130,6 +143,7 @@ const emit = defineEmits<{
   'page-size-change': [size: number]
   'status-change': [status: DownloadRecordStatusFilter]
   retry: [row: DownloadRecord]
+  'retry-all-failed': []
   overwrite: [row: DownloadRecord]
   cancel: [row: DownloadRecord]
   delete: [row: DownloadRecord]
@@ -182,8 +196,14 @@ const formatTime = (ts: number) => new Date(ts * 1000).toLocaleString()
   overflow-x: auto;
 }
 
-.size-summary {
+.toolbar-right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
   flex-shrink: 0;
+}
+
+.size-summary {
   font-size: 12px;
   color: var(--app-text-muted);
 }

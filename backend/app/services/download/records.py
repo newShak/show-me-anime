@@ -96,6 +96,20 @@ def list_records(
     return rows, total
 
 
+def count_failed_records(db: Session) -> int:
+    return db.query(DownloadRecord).filter(DownloadRecord.status == "failed").count()
+
+
+def list_failed_record_ids(db: Session) -> list[str]:
+    rows = (
+        db.query(DownloadRecord.id)
+        .filter(DownloadRecord.status == "failed")
+        .order_by(DownloadRecord.created_at.asc())
+        .all()
+    )
+    return [r[0] for r in rows]
+
+
 def delete_record(db: Session, job_id: str) -> bool:
     row = db.get(DownloadRecord, job_id)
     if row is None:

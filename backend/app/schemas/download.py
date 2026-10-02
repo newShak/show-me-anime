@@ -120,6 +120,18 @@ class DownloadJobBatchResponse(BaseModel):
     jobs: list[DownloadJobResponse]
 
 
+class DownloadJobRetryResponse(BaseModel):
+    job: DownloadJobResponse
+    spawned_jobs: list[DownloadJobResponse] = []
+
+
+class DownloadJobRetryAllResponse(BaseModel):
+    retried: int = 0
+    spawned: int = 0
+    skipped: int = 0
+    errors: list[str] = []
+
+
 class DownloadCacheClearResponse(BaseModel):
     deleted: int
     message: str
@@ -160,3 +172,4 @@ class DownloadRecordListResponse(BaseModel):
     page: int
     page_size: int
     page_total_bytes: int = 0
+    failed_total: int = 0

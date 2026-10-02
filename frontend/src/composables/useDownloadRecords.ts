@@ -5,6 +5,7 @@ import {
   deleteDownloadRecord,
   fetchDownloadRecords,
   overwriteDownloadJob,
+  retryAllFailedDownloadJobs,
   retryDownloadJob,
 } from '@/api/download'
 import { apiErrorMessage } from '@/api/http'
@@ -17,10 +18,12 @@ export const useDownloadRecords = (active: Ref<boolean>) => {
   const items = ref<DownloadRecord[]>([])
   const total = ref(0)
   const pageTotalBytes = ref(0)
+  const failedTotal = ref(0)
   const page = ref(1)
   const pageSize = ref(20)
   const statusFilter = ref<DownloadRecordStatusFilter>('')
   const retryingId = ref<string | null>(null)
+  const retryingAll = ref(false)
   const overwritingId = ref<string | null>(null)
   const cancellingId = ref<string | null>(null)
   const deletingId = ref<string | null>(null)
@@ -57,6 +60,7 @@ export const useDownloadRecords = (active: Ref<boolean>) => {
       items.value = data.items
       total.value = data.total
       pageTotalBytes.value = data.page_total_bytes
+      failedTotal.value = data.failed_total ?? 0
       if (hasActive()) startPoll()
       else stopPoll()
     } finally {
@@ -88,11 +92,44 @@ export const useDownloadRecords = (active: Ref<boolean>) => {
     refresh(true)
   }
 
+  const onRetryAllFailed = async () => {
+    if (!failedTotal.value) return
+    try {
+      await ElMessageBox.confirm(
+        `将重试全部 ${failedTotal.value} 条失败任务（合集会自动拆成章节任务），是否继续？`,
+        '全部重试',
+        { type: 'warning', confirmButtonText: '重试', cancelButtonText: '取消' },
+      )
+    } catch {
+      return
+    }
+    retryingAll.value = true
+    try {
+      const { data } = await retryAllFailedDownloadJobs()
+      const parts: string[] = []
+      if (data.retried) parts.push(`已处理 ${data.retried} 条`)
+      if (data.spawned) parts.push(`新建 ${data.spawned} 个章节任务`)
+      if (data.skipped) parts.push(`${data.skipped} 条跳过`)
+      ElMessage.success(parts.length ? parts.join('，') : '没有可重试的失败任务')
+      if (data.errors.length) ElMessage.warning(data.errors.slice(0, 3).join('；'))
+      await refresh(false)
+      startPoll()
+    } catch (err) {
+      ElMessage.error(apiErrorMessage(err, '全部重试失败'))
+    } finally {
+      retryingAll.value = false
+    }
+  }
+
   const onRetry = async (row: DownloadRecord) => {
     retryingId.value = row.id
     try {
-      await retryDownloadJob(row.id)
-      ElMessage.success('已开始重试')
+      const { data } = await retryDownloadJob(row.id)
+      if (data.spawned_jobs.length) {
+        ElMessage.success(`已创建 ${data.spawned_jobs.length} 个章节下载任务`)
+      } else {
+        ElMessage.success('已开始重试')
+      }
       await refresh(false)
       startPoll()
     } catch {
@@ -173,10 +210,12 @@ export const useDownloadRecords = (active: Ref<boolean>) => {
     items,
     total,
     pageTotalBytes,
+    failedTotal,
     page,
     pageSize,
     statusFilter,
     retryingId,
+    retryingAll,
     overwritingId,
     cancellingId,
     deletingId,
@@ -186,6 +225,7 @@ export const useDownloadRecords = (active: Ref<boolean>) => {
     onPageSizeChange,
     onStatusChange,
     onRetry,
+    onRetryAllFailed,
     onOverwrite,
     onCancel,
     onDelete,

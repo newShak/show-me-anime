@@ -119,7 +119,13 @@ class WnacgAdapter:
         referer_base = self._effective_base_url()
         download_page = f"{referer_base}/download-index-aid-{album_id}.html"
         html = self._get_html(f"/download-index-aid-{album_id}.html")
-        cfg = parse_download_page(html)
+        try:
+            cfg = parse_download_page(html)
+        except ValueError as exc:
+            detail_html = self._get_html(detail_page_path(album_id, 1))
+            if parse_detail(detail_html, self.domain).get("is_series"):
+                raise ValueError("该条目为合集，请在详情中选择章节下载，或使用批量下载自动按章节展开") from exc
+            raise
         try:
             url = self._fetch_signed_download_url(
                 album_id,

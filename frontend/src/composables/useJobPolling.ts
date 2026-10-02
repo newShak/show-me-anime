@@ -2,6 +2,7 @@ import { computed, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import { fetchDownloadJob, retryDownloadJob } from '@/api/download'
 import type { DownloadJob } from '@/types/download'
+import { applyDownloadJobRetry } from '@/utils/downloadRetry'
 
 const POLL_ROUNDS = 120
 const POLL_INTERVAL_MS = 400
@@ -66,7 +67,7 @@ export const useJobPolling = () => {
     retryingId.value = job.id
     try {
       const { data } = await retryDownloadJob(job.id)
-      updateJob(data)
+      jobs.value = applyDownloadJobRetry(jobs.value, data)
       await pollJobs()
     } catch {
       ElMessage.error('重试失败')
@@ -82,7 +83,7 @@ export const useJobPolling = () => {
     try {
       for (const job of failed) {
         const { data } = await retryDownloadJob(job.id)
-        updateJob(data)
+        jobs.value = applyDownloadJobRetry(jobs.value, data)
       }
       await pollJobs()
     } catch {

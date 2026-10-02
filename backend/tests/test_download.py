@@ -169,6 +169,93 @@ def test_download_jobs_batch(client):
     assert all(p.startswith("mock-import/batch/") for p in paths)
 
 
+def test_retry_all_failed_jobs(client, monkeypatch):
+    from app.db.session import SessionLocal, get_engine
+    from app.services.download.records import create_record
+    from app.services.download.types import DownloadJobState
+
+    db = SessionLocal(bind=get_engine())
+    try:
+        create_record(
+            db,
+            DownloadJobState(
+                id="retry-all-fail",
+                source="wnacg",
+                album_id="90001",
+                title="合集A",
+                target_rel_path="mock-import/retry-all/90001",
+                status="failed",
+                message="download page missing CONFIG",
+            ),
+        )
+    finally:
+        db.close()
+
+    monkeypatch.setattr(
+        "app.services.download.jobs.list_failed_record_ids",
+        lambda _db: ["retry-all-fail"],
+    )
+
+    res = client.post("/api/download/jobs/retry-failed")
+    assert res.status_code == 200
+    body = res.json()
+    assert body["retried"] == 1
+    assert body["spawned"] == 3
+
+
+def test_retry_failed_series_job_spawns_chapters(client):
+    from app.db.session import SessionLocal, get_engine
+    from app.services.download.records import create_record
+    from app.services.download.types import DownloadJobState
+
+    job_id = "retry-series-fail"
+    db = SessionLocal(bind=get_engine())
+    try:
+        create_record(
+            db,
+            DownloadJobState(
+                id=job_id,
+                source="wnacg",
+                album_id="90001",
+                title="示例合集",
+                target_rel_path="mock-import/retry-series",
+                status="failed",
+                message="download page missing CONFIG",
+            ),
+        )
+    finally:
+        db.close()
+
+    retry = client.post(f"/api/download/jobs/{job_id}/retry")
+    assert retry.status_code == 200
+    body = retry.json()
+    assert body["job"]["status"] == "done"
+    assert "拆分" in (body["job"]["message"] or "")
+    assert len(body["spawned_jobs"]) == 3
+    assert all(j["target_rel_path"].startswith("mock-import/retry-series/") for j in body["spawned_jobs"])
+
+
+def test_download_jobs_batch_expands_series(client):
+    res = client.post(
+        "/api/download/jobs/batch",
+        json={
+            "parent_rel_path": "mock-import/batch-series",
+            "items": [
+                {
+                    "source": "wnacg",
+                    "album_id": "90001",
+                    "title": "示例合集",
+                }
+            ],
+        },
+    )
+    assert res.status_code == 200
+    jobs = res.json()["jobs"]
+    assert len(jobs) == 3
+    assert all(j["target_rel_path"].startswith("mock-import/batch-series/") for j in jobs)
+    assert all("/示例合集/" in j["target_rel_path"] or "90001" in j["target_rel_path"] for j in jobs)
+
+
 def test_download_jobs_batch_auto_import_tags(client, gallery):
     search = client.get("/api/download/search", params={"q": "batch-tags"}).json()
     item = search["items"][0]
@@ -286,7 +373,7 @@ def test_resume_download_job(client):
 
     res = client.post("/api/download/jobs/resume2/resume")
     assert res.status_code == 200
-    assert res.json()["status"] in {"pending", "running"}
+    assert res.json()["job"]["status"] in {"pending", "running"}
 
 
 def test_resume_download_job_no_partial(client):
@@ -310,7 +397,7 @@ def test_resume_download_job_no_partial(client):
 
     res = client.post("/api/download/jobs/noresumable/retry")
     assert res.status_code == 200
-    assert res.json()["status"] in {"pending", "running"}
+    assert res.json()["job"]["status"] in {"pending", "running"}
 
 
 def test_download_records_filter_and_delete(client):
@@ -445,7 +532,7 @@ def test_retry_failed_job_clears_stale_running_flag(client):
     try:
         res = client.post("/api/download/jobs/stale-failed-retry/retry")
         assert res.status_code == 200
-        assert res.json()["status"] in {"pending", "running"}
+        assert res.json()["job"]["status"] in {"pending", "running"}
     finally:
         with jobs_mod._lock:
             jobs_mod._running_ids.discard("stale-failed-retry")
