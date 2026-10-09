@@ -51,11 +51,14 @@ export const browseRemoteAlbums = (params: {
     },
   })
 
+export type RemoteSearchType = 'keyword' | 'tag'
+
 export const searchRemoteAlbums = (params: {
   q: string
   page?: number
   pageSize?: number
   source?: string
+  searchType?: RemoteSearchType
 }) =>
   http.get<RemoteSearchResult>('/download/search', {
     params: {
@@ -63,6 +66,7 @@ export const searchRemoteAlbums = (params: {
       page: params.page ?? 1,
       pageSize: params.pageSize ?? 24,
       source: params.source ?? 'wnacg',
+      searchType: params.searchType ?? 'keyword',
     },
   })
 

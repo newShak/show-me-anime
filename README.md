@@ -226,11 +226,11 @@ cd backend
 构建与 Hub 推送时，建议**同时**打 `latest` 与**版本号 tag**（版本号读 VERSION，勿用大小写混写的 registry 名）：
 
 ```bash
-# 假设 VERSION 为 0.2.0
+# 假设 VERSION 为 0.2.0（compose 构建产物即 image: yaliyhub/show-me-anime:latest，勿误 tag 旧的 show-me-anime:latest）
 docker compose build
+docker run --rm yaliyhub/show-me-anime:latest cat /app/VERSION   # 应与 VERSION 文件一致
 
-docker tag show-me-anime:latest docker.io/yaliyhub/show-me-anime:0.2.0
-docker tag show-me-anime:latest docker.io/yaliyhub/show-me-anime:latest
+docker tag yaliyhub/show-me-anime:latest docker.io/yaliyhub/show-me-anime:0.2.0
 docker push docker.io/yaliyhub/show-me-anime:0.2.0
 docker push docker.io/yaliyhub/show-me-anime:latest
 ```

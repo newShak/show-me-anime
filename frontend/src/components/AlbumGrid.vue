@@ -52,7 +52,15 @@
           <div class="sub">{{ subText(node) }}</div>
         </div>
         <div v-if="tagsOf(node.id).length" class="tags">
-          <el-tag v-for="tag in tagsOf(node.id)" :key="tag.id" size="small">{{ tag.name }}</el-tag>
+          <el-tag
+            v-for="tag in tagsOf(node.id)"
+            :key="tag.id"
+            size="small"
+            class="tag-chip"
+            @click.stop="emit('tag-click', tag)"
+          >
+            {{ tag.name }}
+          </el-tag>
         </div>
       </div>
       <button
@@ -113,6 +121,7 @@ const emit = defineEmits<{
   move: [node: NodeItem]
   delete: [node: NodeItem]
   'toggle-favorite': [node: NodeItem]
+  'tag-click': [tag: TagItem]
 }>()
 
 const favoriteSet = computed(() => new Set(props.favoriteIds ?? []))
@@ -328,6 +337,10 @@ const subText = (node: NodeItem) => {
   flex-wrap: wrap;
   gap: 4px;
   margin-top: 8px;
+}
+
+.tag-chip {
+  cursor: pointer;
 }
 
 .card-menu {

@@ -62,6 +62,7 @@
           @toggle-favorite="onToggleFavorite"
           @edit="openEdit"
           @add-tags="(node) => openTagPicker([node.id])"
+          @tag-click="onGridTagClick"
           @move="(node) => openMovePicker([node.id])"
           @delete="onDeleteNode"
         />
@@ -138,6 +139,7 @@ import {
 } from '@/composables/useSearchHistory'
 import type { NodeItem } from '@/types/node'
 import type { TagItem } from '@/types/tag'
+import { useTagSearchNavigate } from '@/composables/useTagSearchNavigate'
 import { parseTagSearchMode, TAG_SEARCH_MODE_OPTIONS, type TagSearchMode } from '@/types/search'
 
 const PAGE_SIZE = 20
@@ -145,6 +147,7 @@ const TOP_THRESHOLD = 400
 
 const route = useRoute()
 const router = useRouter()
+const { navigateByTag } = useTagSearchNavigate()
 
 const query = ref('')
 const selectedTagIds = ref<number[]>([])
@@ -331,6 +334,11 @@ const onTextSearch = (q: string, commit?: boolean) => {
 const onSearchClear = () => {
   query.value = ''
   syncRoute()
+}
+
+const onGridTagClick = (tag: TagItem) => {
+  addSearchHistory('', [tag.id], tagMode.value)
+  navigateByTag(tag, tagMode.value)
 }
 
 const onTagChange = () => {

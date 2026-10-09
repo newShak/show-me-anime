@@ -30,7 +30,13 @@
     </div>
 
     <div v-if="mode === 'search'" class="search-row">
-      <el-input v-model="keyword" clearable placeholder="搜索关键词…" @keyup.enter="onSearch" />
+      <el-segmented v-model="searchType" :options="SEARCH_TYPE_OPTIONS" />
+      <el-input
+        v-model="keyword"
+        clearable
+        :placeholder="searchType === 'tag' ? '输入标签名…' : '搜索关键词…'"
+        @keyup.enter="onSearch"
+      />
       <el-button type="primary" :loading="loading" @click="onSearch">搜索</el-button>
     </div>
 
@@ -67,7 +73,9 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
+import { useRoute } from 'vue-router'
+import type { RemoteSearchType } from '@/api/download'
 import { FullScreen } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 import RemoteAlbumGrid from '@/components/RemoteAlbumGrid.vue'
@@ -83,8 +91,17 @@ const pageSize = 24
 
 type Mode = 'search' | 'browse'
 
+const SEARCH_TYPE_OPTIONS = [
+  { label: '关键词', value: 'keyword' as const },
+  { label: '标签', value: 'tag' as const },
+]
+
+const route = useRoute()
 const mode = ref<Mode>('search')
-const keyword = ref('')
+const searchType = ref<RemoteSearchType>(
+  route.query.searchType === 'tag' ? 'tag' : 'keyword',
+)
+const keyword = ref(typeof route.query.q === 'string' ? route.query.q : '')
 const page = ref(1)
 const total = ref(0)
 const loading = ref(false)
@@ -131,6 +148,7 @@ const loadSearch = async () => {
       page: page.value,
       pageSize,
       source: SOURCE,
+      searchType: searchType.value,
     })
     items.value = data.items
     total.value = data.total
@@ -223,7 +241,28 @@ const openBatch = () => {
 
 const openRecordsFullscreen = () => recordsRef.value?.openFullscreen()
 
-onMounted(loadSources)
+const applyRouteSearch = () => {
+  const q = route.query.q
+  const st = route.query.searchType
+  if (typeof q === 'string' && q.trim()) {
+    keyword.value = q
+    searchType.value = st === 'tag' ? 'tag' : 'keyword'
+    mode.value = 'search'
+    page.value = 1
+    searched.value = true
+    loadSearch()
+  }
+}
+
+onMounted(async () => {
+  await loadSources()
+  applyRouteSearch()
+})
+
+watch(
+  () => [route.query.q, route.query.searchType] as const,
+  () => applyRouteSearch(),
+)
 </script>
 
 <style scoped>

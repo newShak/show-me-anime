@@ -177,11 +177,12 @@ def download_search(
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=24, ge=1, le=48, alias="pageSize"),
     source: str = Query(default="wnacg"),
+    search_type: str = Query(default="keyword", alias="searchType"),
     settings: Settings = Depends(get_settings),
 ) -> RemoteSearchResponse:
     try:
         adapter = get_adapter(source, settings)
-        result = adapter.search(q, page, page_size)
+        result = adapter.search(q, page, page_size, search_type=search_type)
     except KeyError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except NotImplementedError as exc:

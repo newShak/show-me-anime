@@ -43,6 +43,15 @@
             />
           </el-select>
           <span class="float-divider" />
+          <el-select v-model="tagSearchScope" class="tag-scope-select" size="small">
+            <el-option
+              v-for="opt in TAG_SEARCH_SCOPE_OPTIONS"
+              :key="opt.value"
+              :label="opt.label"
+              :value="opt.value"
+            />
+          </el-select>
+          <span class="float-divider" />
           <el-button
             text
             size="small"
@@ -171,6 +180,7 @@
                 @toggle-favorite="onToggleFavorite"
                 @edit="openEdit"
                 @add-tags="(node) => openTagPicker([node.id])"
+                @tag-click="onGridTagClick"
                 @move="(node) => openMovePicker([node.id])"
                 @delete="onDeleteNode"
               />
@@ -192,6 +202,7 @@
                   @toggle-favorite="onToggleFavorite"
                   @edit="openEdit"
                   @add-tags="(node) => openTagPicker([node.id])"
+                  @tag-click="onGridTagClick"
                   @move="(node) => openMovePicker([node.id])"
                   @delete="onDeleteNode"
                 />
@@ -270,6 +281,10 @@ import { apiErrorMessage } from '@/api/http'
 import { addSearchHistory, type SearchHistoryItem } from '@/composables/useSearchHistory'
 import { fetchFavoriteIds, toggleFavorite } from '@/composables/useFavorites'
 import { touchRecentView } from '@/composables/useRecentView'
+import {
+  TAG_SEARCH_SCOPE_OPTIONS,
+  useTagSearchNavigate,
+} from '@/composables/useTagSearchNavigate'
 import { parseTagSearchMode, TAG_SEARCH_MODE_OPTIONS, type TagSearchMode } from '@/types/search'
 import type { ImageItem, NodeItem } from '@/types/node'
 import type { TagItem } from '@/types/tag'
@@ -301,6 +316,7 @@ const moveNodeIds = ref<number[]>([])
 const moving = ref(false)
 const filterTagIds = ref<number[]>([])
 const tagMode = ref<TagSearchMode>('or')
+const { scope: tagSearchScope, navigateByTag, navigateByTagIds } = useTagSearchNavigate()
 const favoriteIds = ref<number[]>([])
 const { isMobile } = useBreakpoint()
 const treeDrawerOpen = ref(false)
@@ -351,9 +367,15 @@ const onSearchHistoryPick = (item: SearchHistoryItem) => {
   goSearch(item.q, item.tagIds, tagMode.value)
 }
 
+const tagNameById = (id: number) => allTags.value.find((t) => t.id === id)?.name
+
 const onTagFilterChange = () => {
   if (!filterTagIds.value.length) return
   addSearchHistory('', filterTagIds.value, tagMode.value)
+  if (tagSearchScope.value === 'remote') {
+    navigateByTagIds(filterTagIds.value, tagNameById, tagMode.value)
+    return
+  }
   goSearch('', filterTagIds.value, tagMode.value)
 }
 
@@ -494,7 +516,13 @@ const refreshTags = () => {
 }
 
 const onCurrentTagClick = (tag: TagItem) => {
-  goSearch('', [tag.id])
+  addSearchHistory('', [tag.id], tagMode.value)
+  navigateByTag(tag, tagMode.value)
+}
+
+const onGridTagClick = (tag: TagItem) => {
+  addSearchHistory('', [tag.id], tagMode.value)
+  navigateByTag(tag, tagMode.value)
 }
 
 const loadProgress = async () => {
@@ -1042,6 +1070,16 @@ onMounted(async () => {
 
 .sort-select {
   width: 108px;
+}
+
+.tag-scope-select {
+  width: 112px;
+}
+
+.tag-scope-select :deep(.el-select__wrapper) {
+  box-shadow: none;
+  background: transparent;
+  padding: 0 8px;
 }
 
 .sort-select :deep(.el-select__wrapper) {

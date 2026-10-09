@@ -16,6 +16,7 @@ from app.services.download.wnacg_parse import (
     CHAPTER_PAGE_SIZE,
     PAGE_SIZE,
     albums_page_path,
+    tag_albums_page_path,
     chapters_api_path,
     detail_page_path,
     normalize_domain,
@@ -95,9 +96,18 @@ class WnacgAdapter:
     def base_url(self) -> str:
         return f"https://{self.domain}"
 
-    def search(self, q: str, page: int = 1, page_size: int = 24) -> RemoteSearchResult:
+    def search(
+        self,
+        q: str,
+        page: int = 1,
+        page_size: int = 24,
+        search_type: str = "keyword",
+    ) -> RemoteSearchResult:
+        kind = (search_type or "keyword").strip().lower()
         if self.use_mock:
             return self._mock_search(q, page, page_size)
+        if kind == "tag":
+            return self._live_search_tag(q, page, page_size)
         return self._live_search(q, page, page_size)
 
     def browse(self, cate_id: int | None = None, page: int = 1, page_size: int = 24) -> RemoteBrowseResult:
@@ -432,6 +442,23 @@ class WnacgAdapter:
         html = self._get_html("/search/index.php", params=params)
         rows = parse_search_items(html, self.domain)
         total = parse_search_total(html)
+        items = self._rows_to_albums(rows, page_size)
+        return RemoteSearchResult(
+            items=items,
+            total=total,
+            page=page,
+            page_size=min(page_size, PAGE_SIZE),
+        )
+
+    def _live_search_tag(self, tag: str, page: int, page_size: int) -> RemoteSearchResult:
+        tag = (tag or "").strip()
+        if not tag:
+            return RemoteSearchResult(items=[], total=0, page=page, page_size=page_size)
+        path = tag_albums_page_path(tag, page)
+        logger.info("wnacg live tag search domain=%s tag=%s page=%s path=%s", self.domain, tag, page, path)
+        html = self._get_html(path)
+        rows = parse_search_items(html, self.domain)
+        total = parse_albums_total(html)
         items = self._rows_to_albums(rows, page_size)
         return RemoteSearchResult(
             items=items,

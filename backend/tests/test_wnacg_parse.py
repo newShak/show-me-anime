@@ -74,7 +74,12 @@ def test_parse_download_no_synthetic_backup():
 
 def test_parse_albums_pagination_fixture():
     html = (FIXTURES / "wnacg_search.html").read_text(encoding="utf-8")
-    from app.services.download.wnacg_parse import albums_page_path, parse_albums_pagination, parse_albums_total
+    from app.services.download.wnacg_parse import (
+        albums_page_path,
+        parse_albums_pagination,
+        parse_albums_total,
+        tag_albums_page_path,
+    )
 
     pag = parse_albums_pagination(html)
     assert pag["current_page"] >= 1
@@ -83,6 +88,10 @@ def test_parse_albums_pagination_fixture():
     assert albums_page_path(1) == "/albums-index-page-1.html"
     assert albums_page_path(2, 37) == "/albums-index-page-2-cate-37.html"
     assert albums_page_path(1, 37) == "/albums-index-cate-37.html"
+    assert tag_albums_page_path("無修正") == "/albums-index-tag-%E7%84%A1%E4%BF%AE%E6%AD%A3.html"
+    assert tag_albums_page_path("卡莉奧斯特蘿", 2) == (
+        "/albums-index-page-2-tag-%E5%8D%A1%E8%8E%89%E5%A5%A7%E6%96%AF%E7%89%B9%E8%98%BF.html"
+    )
 
 
 def test_parse_detail_fixture():

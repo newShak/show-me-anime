@@ -2,6 +2,7 @@
 
 import html as html_lib
 import re
+from urllib.parse import quote
 
 from app.services.download.wnacg_cate import cate_info, infer_language_from_title, parse_cate_id
 
@@ -118,9 +119,21 @@ def albums_page_path(page: int = 1, cate_id: int | None = None) -> str:
     return f"/albums-index-page-{page}-cate-{cate_id}.html"
 
 
+def tag_albums_page_path(tag: str, page: int = 1) -> str:
+    """标签列表页路径，与站点 albums-index-tag-*.html 一致。"""
+    slug = quote(tag.strip(), safe="")
+    if page <= 1:
+        return f"/albums-index-tag-{slug}.html"
+    return f"/albums-index-page-{page}-tag-{slug}.html"
+
+
 def parse_albums_pagination(html: str) -> dict[str, int]:
     pages = [1]
-    for m in re.finditer(r"/albums-index-page-(\d+)(?:-cate-\d+)?\.html", html, re.I):
+    for m in re.finditer(
+        r"/albums-index-page-(\d+)(?:-cate-\d+|-tag-[^\"']+)?\.html",
+        html,
+        re.I,
+    ):
         pages.append(int(m.group(1)))
     total_pages = max(pages) if pages else 1
     current = 1

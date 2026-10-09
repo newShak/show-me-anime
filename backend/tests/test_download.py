@@ -17,6 +17,17 @@ def test_download_search_mock(client):
     assert body["items"][0]["source"] == "wnacg"
 
 
+def test_download_search_tag_mock(client):
+    res = client.get(
+        "/api/download/search",
+        params={"q": "無修正", "page": 1, "searchType": "tag"},
+    )
+    assert res.status_code == 200
+    body = res.json()
+    assert body["total"] > 0
+    assert body["items"][0]["title"].startswith("無修正")
+
+
 def test_download_detail_and_cover(client):
     search = client.get("/api/download/search", params={"q": "x"}).json()
     album_id = search["items"][0]["id"]
