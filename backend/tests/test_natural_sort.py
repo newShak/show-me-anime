@@ -26,3 +26,11 @@ def test_page_prefix_order():
         "page2.jpg",
         "page10.jpg",
     ]
+
+
+def test_superscript_digit_does_not_break_sort():
+    assert sorted_image_names(["10.jpg", "[５⁹５⁹].jpg", "2.jpg"]) == [
+        "2.jpg",
+        "10.jpg",
+        "[５⁹５⁹].jpg",
+    ]
