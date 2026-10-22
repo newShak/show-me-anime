@@ -36,6 +36,7 @@ from app.services.download.jobs import (
     delete_download_record,
     get_job,
     is_download_job_running,
+    spawned_jobs_for,
     overwrite_download_job,
     reconcile_stale_download_jobs,
     resume_download_job,
@@ -54,7 +55,8 @@ router = APIRouter(prefix="/download", tags=["download"])
 _RECORD_STATUS = frozenset({"pending", "running", "done", "failed"})
 
 
-def _job_response(job) -> DownloadJobResponse:
+def _job_response(job, *, include_spawned: bool = False) -> DownloadJobResponse:
+    spawned = [_job_response(item) for item in spawned_jobs_for(job.id)] if include_spawned else []
     return DownloadJobResponse(
         id=job.id,
         source=job.source,
@@ -67,6 +69,7 @@ def _job_response(job) -> DownloadJobResponse:
         saved_files=job.saved_files,
         skipped_files=job.skipped_files,
         target_existed=job.target_existed,
+        spawned_jobs=spawned,
     )
 
 
@@ -357,6 +360,7 @@ def start_download_jobs_batch(body: DownloadJobBatchCreate) -> DownloadJobBatchR
             body.parent_rel_path,
             shared_tag_ids=body.tag_ids,
             auto_import_remote_tags=body.auto_import_remote_tags,
+            expand_series=body.expand_series,
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -380,7 +384,7 @@ def get_download_job(job_id: str, db: Session = Depends(get_db)) -> DownloadJobR
     job = get_job(job_id)
     if job is None:
         raise HTTPException(status_code=404, detail="job not found")
-    return _job_response(job)
+    return _job_response(job, include_spawned=True)
 
 
 @router.post("/jobs/{job_id}/resume", response_model=DownloadJobRetryResponse)

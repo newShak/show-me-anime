@@ -38,6 +38,8 @@ _jobs: dict[str, DownloadJobState] = {}
 _running_ids: set[str] = set()
 _force_overwrite: set[str] = set()
 _cancel_ids: set[str] = set()
+_series_expand_ids: set[str] = set()
+_spawned_ids: dict[str, list[str]] = {}
 _lock = threading.Lock()
 _run_sem: threading.Semaphore | None = None
 _run_sem_size = 0
@@ -204,6 +206,7 @@ def create_download_job(
     tag_ids: list[int] | None = None,
     import_remote_tags: list[str] | None = None,
     auto_import_remote_tags: bool = False,
+    expand_series: bool = True,
 ) -> DownloadJobState:
     rel = _safe_rel_path(target_rel_path)
     if not rel:
@@ -226,7 +229,11 @@ def create_download_job(
     )
     with _lock:
         _jobs[job.id] = job
+        if expand_series:
+            _series_expand_ids.add(job.id)
     _insert_record(job)
+    with _lock:
+        _running_ids.add(job.id)
     threading.Thread(target=_run_job, args=(job.id,), daemon=True).start()
     return job
 
@@ -360,55 +367,26 @@ def _chapter_job_title(index: int, name: str) -> str:
     return f"第{index}話 {name}"
 
 
-def _expand_batch_items(
-    items: list[tuple[str, str, str, list[int], list[str]]],
-    parent_rel_path: str,
-    settings: Settings | None = None,
-) -> list[tuple[str, str, str, list[int], list[str], str]]:
-    """单本一条；合集展开为各话，保存到 parent/合集名/第N話 …。"""
-    base = _safe_rel_path(parent_rel_path)
-    settings = settings or get_settings()
-    flat: list[tuple[str, str, str, list[int], list[str], str]] = []
-    for source, album_id, title, tag_ids, import_remote_tags in items:
-        detail = get_adapter(source, settings).get_detail(album_id)
-        if not detail.is_series:
-            flat.append((source, album_id, title, tag_ids, import_remote_tags, base))
-            continue
-        series_parent = _join_rel_path(base, album_folder_name(title, album_id))
-        if not detail.chapters:
-            raise ValueError(f"合集「{title}」没有可下载章节")
-        for ch in detail.chapters:
-            flat.append(
-                (
-                    source,
-                    ch.id,
-                    _chapter_job_title(ch.index, ch.name),
-                    tag_ids,
-                    import_remote_tags,
-                    series_parent,
-                )
-            )
-    return flat
-
-
 def create_download_jobs_batch(
     items: list[tuple[str, str, str, list[int], list[str]]],
     parent_rel_path: str,
     shared_tag_ids: list[int] | None = None,
     auto_import_remote_tags: bool = True,
+    expand_series: bool = True,
 ) -> list[DownloadJobState]:
+    """每条先落成 pending 并返回。合集是否拆章由下载线程处理。"""
     used: set[str] = set()
     jobs: list[DownloadJobState] = []
     shared = list(shared_tag_ids or [])
-    expanded = _expand_batch_items(items, parent_rel_path)
-    for source, album_id, title, tag_ids, import_remote_tags, item_parent in expanded:
+    base = _safe_rel_path(parent_rel_path)
+    for source, album_id, title, tag_ids, import_remote_tags in items:
         remote = [t.strip() for t in (import_remote_tags or []) if t.strip()]
         auto_tags = bool(auto_import_remote_tags and not remote)
         folder = album_folder_name(title, album_id)
-        rel = _join_rel_path(item_parent, folder)
+        rel = _join_rel_path(base, folder)
         if rel in used:
             suffix = album_id[-6:] if len(album_id) >= 6 else album_id
-            rel = _join_rel_path(item_parent, f"{folder}-{suffix}")
+            rel = _join_rel_path(base, f"{folder}-{suffix}")
         used.add(rel)
         merged_tag_ids = list(dict.fromkeys([*shared, *tag_ids]))
         jobs.append(
@@ -420,21 +398,33 @@ def create_download_jobs_batch(
                 tag_ids=merged_tag_ids,
                 import_remote_tags=remote,
                 auto_import_remote_tags=auto_tags,
+                expand_series=expand_series,
             )
         )
     return jobs
 
 
-def _retry_failed_series_job(job: DownloadJobState) -> RetryJobResult:
-    """合集 sid 任务无法直链下载，按章节重建任务到原 target 目录下。"""
-    settings = get_settings()
-    cleanup_job_cache(job_cache_dir(settings, job.id))
-    detail = get_adapter(job.source, settings).get_detail(job.album_id)
-    if not detail.is_series:
-        raise ValueError("not a series job")
+def spawned_jobs_for(job_id: str) -> list[DownloadJobState]:
+    """合集任务在后台拆出的章节任务。"""
+    with _lock:
+        ids = list(_spawned_ids.get(job_id, []))
+    return [job for sid in ids if (job := get_job(sid)) is not None]
+
+
+def _consume_series_expand(job_id: str) -> bool:
+    with _lock:
+        if job_id not in _series_expand_ids:
+            return False
+        _series_expand_ids.discard(job_id)
+        return True
+
+
+def _spawn_series_chapters(job: DownloadJobState, detail) -> None:
+    """按已取到的章节目录建子任务，父任务标为完成。"""
     if not detail.chapters:
         raise ValueError(f"合集「{job.title}」没有可下载章节")
-
+    settings = get_settings()
+    cleanup_job_cache(job_cache_dir(settings, job.id))
     series_parent = job.target_rel_path
     used: set[str] = set()
     spawned: list[DownloadJobState] = []
@@ -455,6 +445,7 @@ def _retry_failed_series_job(job: DownloadJobState) -> RetryJobResult:
                 tag_ids=list(job.tag_ids),
                 import_remote_tags=list(job.import_remote_tags),
                 auto_import_remote_tags=job.auto_import_remote_tags,
+                expand_series=False,
             )
         )
 
@@ -470,12 +461,31 @@ def _retry_failed_series_job(job: DownloadJobState) -> RetryJobResult:
     updated = get_job(job.id) or job
     with _lock:
         _jobs[job.id] = updated
-    logger.info("download job_id=%s series retry spawned=%s chapters", job.id, n)
-    return RetryJobResult(job=updated, spawned_jobs=spawned)
+        _spawned_ids[job.id] = [item.id for item in spawned]
+    logger.info("download job_id=%s series spawned=%s chapters", job.id, n)
+
+
+def _expand_series_job(job_id: str) -> bool:
+    """后台判断合集。是合集则拆章并返回 True，调用方不再下载这条任务。"""
+    job = get_job(job_id)
+    if job is None:
+        return True
+    _update(job_id, message="正在准备")
+    settings = get_settings()
+    try:
+        detail = get_adapter(job.source, settings).get_detail(job.album_id)
+    except Exception as exc:
+        logger.warning("series check job_id=%s: %s", job_id, exc)
+        return False
+    if not detail.is_series:
+        return False
+    _check_cancel(job_id)
+    _spawn_series_chapters(job, detail)
+    return True
 
 
 def retry_download_job(job_id: str) -> RetryJobResult:
-    """重试失败任务：有断点则续传，否则清空缓存后重新下载；合集自动拆章节。"""
+    """重试失败任务：立刻回到 pending。续传、清缓存和合集拆章都在后台做。"""
     job = get_job(job_id)
     if job is None:
         raise ValueError("job not found")
@@ -487,15 +497,6 @@ def retry_download_job(job_id: str) -> RetryJobResult:
         raise ValueError("job cannot be retried")
 
     settings = get_settings()
-    try:
-        detail = get_adapter(job.source, settings).get_detail(job.album_id)
-        if detail.is_series:
-            return _retry_failed_series_job(job)
-    except ValueError:
-        raise
-    except Exception as exc:
-        logger.warning("series check on retry job_id=%s: %s", job_id, exc)
-
     cache_dir = job_cache_dir(settings, job_id)
     from app.services.download.transfer import is_job_resumable
 
@@ -509,7 +510,10 @@ def retry_download_job(job_id: str) -> RetryJobResult:
         _jobs[job_id] = job
         _force_overwrite.discard(job_id)
         _cancel_ids.discard(job_id)
+        _series_expand_ids.add(job_id)
     _update(job_id, status="pending", progress=0, message=message, saved_files=0, skipped_files=0)
+    with _lock:
+        _running_ids.add(job_id)
     threading.Thread(target=_run_job, args=(job_id,), daemon=True).start()
     return RetryJobResult(job=get_job(job_id) or job)
 
@@ -586,6 +590,8 @@ def overwrite_download_job(job_id: str) -> DownloadJobState:
         saved_files=0,
         skipped_files=0,
     )
+    with _lock:
+        _running_ids.add(job_id)
     threading.Thread(target=_run_job, args=(job_id,), daemon=True).start()
     return get_job(job_id) or job
 
@@ -637,8 +643,13 @@ def _run_job(job_id: str) -> None:
     sem = _run_semaphore()
     with _lock:
         _running_ids.add(job_id)
+    acquired = False
     try:
+        _check_cancel(job_id)
+        if _consume_series_expand(job_id) and _expand_series_job(job_id):
+            return
         sem.acquire()
+        acquired = True
         _check_cancel(job_id)
         job = get_job(job_id)
         if job is None:
@@ -727,7 +738,8 @@ def _run_job(job_id: str) -> None:
             _running_ids.discard(job_id)
             _force_overwrite.discard(job_id)
             _cancel_ids.discard(job_id)
-        sem.release()
+        if acquired:
+            sem.release()
 
 
 def _write_mock_images(

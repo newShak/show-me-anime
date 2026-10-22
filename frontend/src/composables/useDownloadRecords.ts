@@ -8,7 +8,7 @@ import {
   retryAllFailedDownloadJobs,
   retryDownloadJob,
 } from '@/api/download'
-import { apiErrorMessage } from '@/api/http'
+import { apiErrorMessage, isRequestTimeout } from '@/api/http'
 import type { DownloadRecord } from '@/types/download'
 
 export type DownloadRecordStatusFilter = '' | 'pending' | 'running' | 'done' | 'failed'
@@ -107,15 +107,20 @@ export const useDownloadRecords = (active: Ref<boolean>) => {
     try {
       const { data } = await retryAllFailedDownloadJobs()
       const parts: string[] = []
-      if (data.retried) parts.push(`已处理 ${data.retried} 条`)
-      if (data.spawned) parts.push(`新建 ${data.spawned} 个章节任务`)
+      if (data.retried) parts.push(`已加入重试队列 ${data.retried} 条`)
       if (data.skipped) parts.push(`${data.skipped} 条跳过`)
       ElMessage.success(parts.length ? parts.join('，') : '没有可重试的失败任务')
       if (data.errors.length) ElMessage.warning(data.errors.slice(0, 3).join('；'))
       await refresh(false)
       startPoll()
     } catch (err) {
-      ElMessage.error(apiErrorMessage(err, '全部重试失败'))
+      if (isRequestTimeout(err)) {
+        ElMessage.warning('请求超时，请在下载记录中确认')
+        await refresh(false)
+        startPoll()
+      } else {
+        ElMessage.error(apiErrorMessage(err, '全部重试失败'))
+      }
     } finally {
       retryingAll.value = false
     }
@@ -124,16 +129,18 @@ export const useDownloadRecords = (active: Ref<boolean>) => {
   const onRetry = async (row: DownloadRecord) => {
     retryingId.value = row.id
     try {
-      const { data } = await retryDownloadJob(row.id)
-      if (data.spawned_jobs.length) {
-        ElMessage.success(`已创建 ${data.spawned_jobs.length} 个章节下载任务`)
-      } else {
-        ElMessage.success('已开始重试')
-      }
+      await retryDownloadJob(row.id)
+      ElMessage.success('已加入重试队列')
       await refresh(false)
       startPoll()
-    } catch {
-      ElMessage.error('重试失败')
+    } catch (err) {
+      if (isRequestTimeout(err)) {
+        ElMessage.warning('请求超时，请在下载记录中确认')
+        await refresh(false)
+        startPoll()
+      } else {
+        ElMessage.error('重试失败')
+      }
     } finally {
       retryingId.value = null
     }

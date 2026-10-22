@@ -46,7 +46,7 @@ import { useDialogWidth } from '@/composables/useDialogWidth'
 import { useJobPolling } from '@/composables/useJobPolling'
 import { getDownloadParentPath, saveDownloadParentPath } from '@/composables/useDownloadParentPath'
 import { createDownloadJobsBatch } from '@/api/download'
-import { apiErrorMessage } from '@/api/http'
+import { apiErrorMessage, isRequestTimeout } from '@/api/http'
 import { albumFolderName, joinTargetPath } from '@/utils/downloadPath'
 import type { RemoteAlbum } from '@/types/download'
 
@@ -88,12 +88,13 @@ const onSubmit = async () => {
     })
     jobs.value = data.jobs
     emit('submitted')
-    ElMessage.success(`已创建 ${data.jobs.length} 个下载任务`)
+    ElMessage.success(`已加入 ${data.jobs.length} 个下载任务`)
     if (data.jobs.some((j) => j.target_existed)) {
       ElMessage.warning('部分目标路径已存在，将跳过下载')
     }
   } catch (e) {
-    ElMessage.error(apiErrorMessage(e, '创建下载任务失败'))
+    if (isRequestTimeout(e)) ElMessage.warning('请求超时，请在下载记录中确认')
+    else ElMessage.error(apiErrorMessage(e, '创建下载任务失败'))
     return
   } finally {
     submitting.value = false

@@ -84,6 +84,7 @@ export type DownloadJob = {
   saved_files: number
   skipped_files: number
   target_existed: boolean
+  spawned_jobs?: DownloadJob[]
 }
 
 export type DownloadJobCreate = {
@@ -100,6 +101,8 @@ export type DownloadJobBatchCreate = {
   tag_ids?: number[]
   /** 列表无 tags 时由后端按相册详情拉取外站标签，默认 true */
   auto_import_remote_tags?: boolean
+  /** 详情里已经选好章节时传 false */
+  expand_series?: boolean
   items: Pick<DownloadJobCreate, 'source' | 'album_id' | 'title' | 'tag_ids' | 'import_remote_tags'>[]
 }
 

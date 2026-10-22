@@ -100,6 +100,8 @@ class DownloadJobBatchCreate(BaseModel):
     tag_ids: list[int] = []
     # 列表接口通常不带 tags；为 True 时对未指定 import_remote_tags 的项从详情页拉取
     auto_import_remote_tags: bool = True
+    # 详情里已选好章节时为 False，后台不再把每一话当合集去拆
+    expand_series: bool = True
 
 
 class DownloadJobResponse(BaseModel):
@@ -114,6 +116,7 @@ class DownloadJobResponse(BaseModel):
     saved_files: int = 0
     skipped_files: int = 0
     target_existed: bool = False
+    spawned_jobs: list["DownloadJobResponse"] = []
 
 
 class DownloadJobBatchResponse(BaseModel):

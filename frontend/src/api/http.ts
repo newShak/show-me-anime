@@ -10,3 +10,6 @@ export const apiErrorMessage = (err: unknown, fallback: string) => {
   const detail = err.response?.data?.detail
   return typeof detail === 'string' ? detail : fallback
 }
+
+export const isRequestTimeout = (err: unknown) =>
+  axios.isAxiosError(err) && err.code === 'ECONNABORTED'

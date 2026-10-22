@@ -166,6 +166,7 @@ def test_download_jobs_batch(client):
         "/api/download/jobs/batch",
         json={
             "parent_rel_path": "mock-import/batch",
+            "auto_import_remote_tags": False,
             "items": [
                 {"source": "wnacg", "album_id": i["id"], "title": i["title"]}
                 for i in picked
@@ -211,7 +212,18 @@ def test_retry_all_failed_jobs(client, monkeypatch):
     assert res.status_code == 200
     body = res.json()
     assert body["retried"] == 1
-    assert body["spawned"] == 3
+    assert body["spawned"] == 0
+
+    import time
+
+    job = {"status": "pending", "spawned_jobs": []}
+    for _ in range(50):
+        job = client.get("/api/download/jobs/retry-all-fail").json()
+        if job["status"] in {"done", "failed"}:
+            break
+        time.sleep(0.05)
+    assert job["status"] == "done"
+    assert len(job["spawned_jobs"]) == 3
 
 
 def test_retry_failed_series_job_spawns_chapters(client):
@@ -240,10 +252,21 @@ def test_retry_failed_series_job_spawns_chapters(client):
     retry = client.post(f"/api/download/jobs/{job_id}/retry")
     assert retry.status_code == 200
     body = retry.json()
-    assert body["job"]["status"] == "done"
-    assert "拆分" in (body["job"]["message"] or "")
-    assert len(body["spawned_jobs"]) == 3
-    assert all(j["target_rel_path"].startswith("mock-import/retry-series/") for j in body["spawned_jobs"])
+    assert body["job"]["status"] == "pending"
+    assert body["spawned_jobs"] == []
+
+    import time
+
+    job = body["job"]
+    for _ in range(50):
+        job = client.get(f"/api/download/jobs/{job_id}").json()
+        if job["status"] in {"done", "failed"}:
+            break
+        time.sleep(0.05)
+    assert job["status"] == "done"
+    assert "拆分" in (job["message"] or "")
+    assert len(job["spawned_jobs"]) == 3
+    assert all(j["target_rel_path"].startswith("mock-import/retry-series/") for j in job["spawned_jobs"])
 
 
 def test_download_jobs_batch_expands_series(client):
@@ -251,6 +274,7 @@ def test_download_jobs_batch_expands_series(client):
         "/api/download/jobs/batch",
         json={
             "parent_rel_path": "mock-import/batch-series",
+            "auto_import_remote_tags": False,
             "items": [
                 {
                     "source": "wnacg",
@@ -262,9 +286,22 @@ def test_download_jobs_batch_expands_series(client):
     )
     assert res.status_code == 200
     jobs = res.json()["jobs"]
-    assert len(jobs) == 3
-    assert all(j["target_rel_path"].startswith("mock-import/batch-series/") for j in jobs)
-    assert all("/示例合集/" in j["target_rel_path"] or "90001" in j["target_rel_path"] for j in jobs)
+    assert len(jobs) == 1
+    assert jobs[0]["status"] == "pending"
+
+    import time
+
+    job = jobs[0]
+    for _ in range(50):
+        job = client.get(f"/api/download/jobs/{job['id']}").json()
+        if job["status"] in {"done", "failed"}:
+            break
+        time.sleep(0.05)
+    assert job["status"] == "done"
+    spawned = job["spawned_jobs"]
+    assert len(spawned) == 3
+    assert all(j["target_rel_path"].startswith("mock-import/batch-series/") for j in spawned)
+    assert all("/示例合集/" in j["target_rel_path"] for j in spawned)
 
 
 def test_download_jobs_batch_auto_import_tags(client, gallery):

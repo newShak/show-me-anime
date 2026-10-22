@@ -1,6 +1,7 @@
 import { computed, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import { fetchDownloadJob, retryDownloadJob } from '@/api/download'
+import { isRequestTimeout } from '@/api/http'
 import type { DownloadJob } from '@/types/download'
 import { applyDownloadJobRetry } from '@/utils/downloadRetry'
 
@@ -49,7 +50,15 @@ export const useJobPolling = () => {
           pending = true
           const { data } = await fetchDownloadJob(jobs.value[i].id)
           if (gen !== generation) return true
-          jobs.value[i] = data
+          const spawned = data.spawned_jobs ?? []
+          const known = new Set(jobs.value.map((j) => j.id))
+          const fresh = spawned.filter((j) => !known.has(j.id))
+          if (spawned.length) {
+            jobs.value = applyDownloadJobRetry(jobs.value, { job: data, spawned_jobs: spawned })
+            if (fresh.length) ElMessage.info(`合集已拆分为 ${fresh.length} 个章节下载任务`)
+          } else {
+            jobs.value[i] = data
+          }
         }
         if (!pending) break
         await new Promise((r) => setTimeout(r, POLL_INTERVAL_MS))
@@ -69,8 +78,9 @@ export const useJobPolling = () => {
       const { data } = await retryDownloadJob(job.id)
       jobs.value = applyDownloadJobRetry(jobs.value, data)
       await pollJobs()
-    } catch {
-      ElMessage.error('重试失败')
+    } catch (err) {
+      if (isRequestTimeout(err)) ElMessage.warning('请求超时，请在下载记录中确认')
+      else ElMessage.error('重试失败')
     } finally {
       retryingId.value = null
     }
@@ -86,8 +96,9 @@ export const useJobPolling = () => {
         jobs.value = applyDownloadJobRetry(jobs.value, data)
       }
       await pollJobs()
-    } catch {
-      ElMessage.error('重试失败')
+    } catch (err) {
+      if (isRequestTimeout(err)) ElMessage.warning('请求超时，请在下载记录中确认')
+      else ElMessage.error('重试失败')
     } finally {
       retryingAll.value = false
     }

@@ -99,7 +99,7 @@ import {
   fetchRemoteDetail,
   fetchRemotePreviews,
 } from '@/api/download'
-import { apiErrorMessage } from '@/api/http'
+import { apiErrorMessage, isRequestTimeout } from '@/api/http'
 import DownloadJobProgress from '@/components/DownloadJobProgress.vue'
 import DownloadPathPicker from '@/components/DownloadPathPicker.vue'
 import DownloadTagSection from '@/components/DownloadTagSection.vue'
@@ -261,6 +261,7 @@ const onDownload = async () => {
       const { data } = await createDownloadJobsBatch({
         parent_rel_path: targetPath.value,
         tag_ids: tags.tag_ids,
+        expand_series: false,
         items: picked.map((c) => ({
           source: props.item!.source,
           album_id: c.id,
@@ -287,7 +288,8 @@ const onDownload = async () => {
     if (data.target_existed) ElMessage.warning('目标路径已存在，将跳过下载')
     await pollJobs()
   } catch (e) {
-    ElMessage.error(apiErrorMessage(e, '创建下载任务失败'))
+    if (isRequestTimeout(e)) ElMessage.warning('请求超时，请在下载记录中确认')
+    else ElMessage.error(apiErrorMessage(e, '创建下载任务失败'))
   } finally {
     downloading.value = false
   }
