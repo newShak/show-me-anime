@@ -48,16 +48,43 @@
         </div>
       </section>
       <p v-if="hasFilter" class="summary">{{ summaryText }} · 共 {{ total }} 个结果</p>
+      <div v-if="items.length" class="batch-bar">
+        <el-button text size="small" @click="toggleSelectMode">{{ selectMode ? '取消' : '选择' }}</el-button>
+        <template v-if="selectMode">
+          <el-button text size="small" @click="toggleSelectAll">
+            {{ allSelected ? '取消全选' : '全选' }}
+          </el-button>
+          <el-button text size="small" :disabled="!selectedNodeIds.length" @click="openTagPicker(selectedNodeIds)">
+            标签{{ selectedNodeIds.length ? ` (${selectedNodeIds.length})` : '' }}
+          </el-button>
+          <el-button text size="small" :disabled="!selectedNodeIds.length" @click="openMovePicker(selectedNodeIds)">
+            移动{{ selectedNodeIds.length ? ` (${selectedNodeIds.length})` : '' }}
+          </el-button>
+          <el-button
+            text
+            size="small"
+            type="danger"
+            :disabled="!selectedNodeIds.length"
+            :loading="deleting"
+            @click="onBatchDelete"
+          >
+            删除{{ selectedNodeIds.length ? ` (${selectedNodeIds.length})` : '' }}
+          </el-button>
+        </template>
+      </div>
 
       <el-skeleton v-if="loading && !items.length" :rows="4" animated />
 
       <template v-else-if="items.length">
         <AlbumGrid
           :nodes="items"
+          :selectable="selectMode"
+          :selected-ids="selectedNodeIds"
           :node-tags="nodeTagsMap"
           :progress-map="progressPercentMap"
           :favorite-ids="favoriteIds"
           show-menu
+          @toggle="toggleSelect"
           @open="openNode"
           @toggle-favorite="onToggleFavorite"
           @edit="openEdit"
@@ -172,6 +199,34 @@ const tagPickerSubmitting = ref(false)
 const movePickerOpen = ref(false)
 const moveNodeIds = ref<number[]>([])
 const moving = ref(false)
+const selectMode = ref(false)
+const selectedNodeIds = ref<number[]>([])
+const deleting = ref(false)
+
+const allSelected = computed(
+  () => items.value.length > 0 && selectedNodeIds.value.length === items.value.length,
+)
+
+const clearNodeSelection = () => {
+  selectMode.value = false
+  selectedNodeIds.value = []
+}
+
+const toggleSelectMode = () => {
+  if (selectMode.value) clearNodeSelection()
+  else selectMode.value = true
+}
+
+const toggleSelect = (id: number) => {
+  const set = new Set(selectedNodeIds.value)
+  if (set.has(id)) set.delete(id)
+  else set.add(id)
+  selectedNodeIds.value = [...set]
+}
+
+const toggleSelectAll = () => {
+  selectedNodeIds.value = allSelected.value ? [] : items.value.map((n) => n.id)
+}
 
 const refreshHistory = () => {
   historyItems.value = getSearchHistory()
@@ -287,6 +342,7 @@ const runSearch = async (append = false) => {
     offset.value = 0
     nodeTagsMap.value = {}
     progressPercentMap.value = {}
+    clearNodeSelection()
     return
   }
 
@@ -297,6 +353,7 @@ const runSearch = async (append = false) => {
     items.value = []
     nodeTagsMap.value = {}
     progressPercentMap.value = {}
+    selectedNodeIds.value = []
   }
 
   try {
@@ -468,10 +525,12 @@ const onMoveConfirm = async (targetParentId: number | null) => {
         const moved = new Set(ids)
         items.value = items.value.filter((n) => !moved.has(n.id))
         total.value = Math.max(0, total.value - data.moved)
+        selectedNodeIds.value = selectedNodeIds.value.filter((id) => !moved.has(id))
       }
     }
     movePickerOpen.value = false
     moveNodeIds.value = []
+    if (!selectedNodeIds.value.length) selectMode.value = false
   } catch {
     ElMessage.error('移动失败')
   } finally {
@@ -500,9 +559,45 @@ const onDeleteNode = async (node: NodeItem) => {
     }
     items.value = items.value.filter((n) => n.id !== node.id)
     total.value = Math.max(0, total.value - 1)
+    selectedNodeIds.value = selectedNodeIds.value.filter((id) => id !== node.id)
+    if (!selectedNodeIds.value.length) selectMode.value = false
     ElMessage.success('已删除')
   } catch {
     ElMessage.error('删除失败')
+  }
+}
+
+const onBatchDelete = async () => {
+  if (!selectedNodeIds.value.length) return
+  const names = items.value.filter((n) => selectedNodeIds.value.includes(n.id)).map((n) => n.name)
+  try {
+    await ElMessageBox.confirm(
+      `确定删除 ${names.length} 个相册？\n\n${names.join('、')}\n\n磁盘上的文件夹将被永久删除。`,
+      '删除确认',
+      { type: 'warning', confirmButtonText: '删除', cancelButtonText: '取消' },
+    )
+  } catch {
+    return
+  }
+
+  deleting.value = true
+  try {
+    const ids = [...selectedNodeIds.value]
+    const { data } = await deleteNodes(ids)
+    if (data.errors.length) {
+      ElMessage.warning(`已删除 ${data.deleted} 项，部分失败：${data.errors.join('; ')}`)
+      await runSearch()
+    } else {
+      const removed = new Set(ids)
+      items.value = items.value.filter((n) => !removed.has(n.id))
+      total.value = Math.max(0, total.value - data.deleted)
+      ElMessage.success(`已删除 ${data.deleted} 项`)
+    }
+    clearNodeSelection()
+  } catch {
+    ElMessage.error('删除失败')
+  } finally {
+    deleting.value = false
   }
 }
 
@@ -649,9 +744,17 @@ onUnmounted(() => {
 }
 
 .summary {
-  margin: 0 0 24px;
+  margin: 0 0 8px;
   color: var(--app-text-secondary);
   font-size: 14px;
+}
+
+.batch-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  align-items: center;
+  margin-bottom: 16px;
 }
 
 .sentinel {

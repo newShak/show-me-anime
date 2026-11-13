@@ -100,6 +100,59 @@ def test_move_album_into_album(client, gallery):
     assert moved["parent_id"] == target["id"]
 
 
+def test_move_keeps_identity_and_leaves_covers_to_scan(client, gallery):
+    """移动只改路径，保留子节点 id、标签和进度；封面留给随后的扫描。"""
+    _make_album(gallery, "box/inner", ["1.jpg"])
+    _make_album(gallery, "src/leaf", ["1.jpg"])
+    _make_album(gallery, "dest/holder", ["1.jpg"])
+    _scan(client)
+
+    root = client.get("/api/nodes").json()
+    box = _find_node(root, "box")
+    src = _find_node(root, "src")
+    dest = _find_node(root, "dest")
+    leaf = client.get("/api/nodes", params={"parent_id": src["id"]}).json()[0]
+
+    tag = client.post("/api/tags", json={"name": "keep-me"}).json()
+    client.put(f"/api/tags/nodes/{leaf['id']}", json={"tag_ids": [tag["id"]]})
+    client.put(f"/api/nodes/{leaf['id']}/progress", json={"page_index": 0})
+
+    from app.db.models import Node
+    from app.db.session import SessionLocal, get_engine
+
+    db = SessionLocal(bind=get_engine())
+    row = db.get(Node, box["id"])
+    row.cover_rel_path = "stale-cover"
+    row.cover_manual = False
+    db.commit()
+    db.close()
+
+    res = client.post("/api/nodes/move", json={"ids": [src["id"]], "target_parent_id": dest["id"]})
+    assert res.status_code == 200
+    assert res.json()["moved"] == 1
+    assert not res.json()["errors"]
+
+    moved_src = client.get(f"/api/nodes/{src['id']}").json()
+    assert moved_src["path"] == "dest/src"
+    assert moved_src["parent_id"] == dest["id"]
+
+    moved_leaf = client.get(f"/api/nodes/{leaf['id']}").json()
+    assert moved_leaf["path"] == "dest/src/leaf"
+    assert moved_leaf["parent_id"] == src["id"]
+    assert client.get(f"/api/tags/nodes/{leaf['id']}").json()[0]["id"] == tag["id"]
+    assert client.get(f"/api/nodes/{leaf['id']}/progress").json()["page_index"] == 0
+    assert client.get(f"/api/nodes/{box['id']}").json()["cover_rel_path"] == "stale-cover"
+
+    found = client.get("/api/search", params={"q": "dest/src/leaf"}).json()
+    assert any(item["id"] == leaf["id"] for item in found["items"])
+
+    scanned = client.post("/api/scan/trigger")
+    assert scanned.status_code == 200
+    assert client.get(f"/api/nodes/{leaf['id']}").json()["path"] == "dest/src/leaf"
+    assert client.get(f"/api/tags/nodes/{leaf['id']}").json()[0]["id"] == tag["id"]
+    assert client.get(f"/api/nodes/{box['id']}").json()["cover_rel_path"] != "stale-cover"
+
+
 def test_move_batch_dedupe_parent_child(client, gallery):
     _make_album(gallery, "batch-parent/batch-child", ["1.jpg"])
     _scan(client)

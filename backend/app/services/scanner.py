@@ -11,7 +11,7 @@ from app import constants
 from app.config import Settings, get_settings
 from app.db.models import Node, ScanJob
 from app.services.archive_reader import list_archive_images
-from app.services.cover_candidates import child_cover_path, inherit_container_cover
+from app.services.cover_candidates import _children_map, child_cover_path, inherit_container_cover
 from app.services.node_admin import sync_node_search_index
 from app.services.node_delete import purge_nodes_index
 from app.utils.natural_sort import natural_sort_key, sorted_image_names
@@ -206,9 +206,11 @@ class Scanner:
 
     def _apply_container_covers(self, db: Session, job: ScanJob) -> None:
         """纯容器目录无本地图片时，继承第一个有封面的子节点。"""
+        children = _children_map(db)
         containers = [
             n
-            for n in db.query(Node).all()
+            for group in children.values()
+            for n in group
             if n.node_type == constants.CONTAINER and n.image_count == 0
         ]
         containers.sort(key=lambda n: n.path.count("/"), reverse=True)
@@ -216,7 +218,7 @@ class Scanner:
         for node in containers:
             if node.cover_manual:
                 continue
-            inherited = inherit_container_cover(db, node)
+            inherited = inherit_container_cover(db, node, children)
             if node.cover_rel_path == inherited:
                 continue
             node.cover_rel_path = inherited

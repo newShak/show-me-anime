@@ -29,9 +29,14 @@ def _children_map(db: Session) -> dict[int | None, list[Node]]:
     return children
 
 
-def inherit_container_cover(db: Session, node: Node) -> str | None:
+def inherit_container_cover(
+    db: Session,
+    node: Node,
+    children: dict[int | None, list[Node]] | None = None,
+) -> str | None:
     """纯容器自动继承：第一个有封面的子项。"""
-    for child in _children_map(db).get(node.id, []):
+    child_map = children if children is not None else _children_map(db)
+    for child in child_map.get(node.id, []):
         path = child_cover_path(child)
         if path:
             return path

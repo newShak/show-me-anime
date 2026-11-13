@@ -3,6 +3,8 @@
 import logging
 import threading
 import time
+from collections.abc import Iterator
+from contextlib import contextmanager
 
 from app import constants
 from app.db.models import ScanJob
@@ -91,6 +93,28 @@ def run_scan(
 
 def is_scan_running() -> bool:
     return _lock.locked()
+
+
+@contextmanager
+def scan_lock() -> Iterator[None]:
+    """占住扫描锁。移动改路径期间不能让扫描把旧路径当成已删除。"""
+    _lock.acquire()
+    try:
+        yield
+    finally:
+        _lock.release()
+
+
+def schedule_scan(source: str, changed_paths: list[str] | None = None) -> None:
+    """后台扫描，不占用当前请求。"""
+
+    def run() -> None:
+        try:
+            run_scan(source=source, changed_paths=changed_paths)
+        except Exception:
+            logger.exception("background scan failed source=%s", source)
+
+    threading.Thread(target=run, name=f"scan-{source}", daemon=True).start()
 
 
 def run_scan_wait(

@@ -1,32 +1,25 @@
-"""节点移动：磁盘目录/压缩包 + 数据库子树路径更新。"""
+"""节点移动：磁盘重命名 + 子树路径前缀更新。封面交给随后的扫描。"""
 
 import logging
 import shutil
 import time
 from pathlib import Path
 
+from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app import constants
 from app.config import Settings, get_settings
-from app.db.models import Node, ScanJob
-from app.services.node_admin import sync_node_search_index
-from app.services.node_delete import collect_subtree_nodes, filter_deletion_roots, resolve_node_dir
-from app.services.scanner import Scanner
+from app.db.models import Node
+from app.services.node_delete import filter_deletion_roots, resolve_node_dir
+from app.services.scan_runner import scan_lock, schedule_scan
 
 logger = logging.getLogger(__name__)
 
 
-def _resolve_parent_id(db: Session, path_str: str) -> int | None:
-    if not path_str:
-        return None
-    parent_path = str(Path(path_str).parent.as_posix())
-    if parent_path == ".":
-        parent_path = ""
-    if not parent_path:
-        return None
-    parent = db.query(Node).filter(Node.path == parent_path).first()
-    return parent.id if parent else None
+def _like_prefix(path: str) -> str:
+    escaped = path.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+    return f"{escaped}/%"
 
 
 def _is_under_path(path: str, prefix: str) -> bool:
@@ -68,9 +61,59 @@ def _validate_target(db: Session, node: Node, target_parent_id: int | None) -> s
     return None
 
 
-def _refresh_container_covers(db: Session, settings: Settings) -> None:
-    job = ScanJob(status=constants.SCAN_DONE, added=0, updated=0, removed=0)
-    Scanner(settings)._apply_container_covers(db, job)
+def _retarget_subtree(db: Session, old_path: str, new_path: str, target_parent_id: int | None) -> None:
+    """一次改写子树 path 和搜索索引。只改被移动根节点的 parent_id，子孙关系不变。"""
+    params = {
+        "new_path": new_path,
+        "cut": len(old_path) + 1,
+        "now": time.time(),
+        "old_path": old_path,
+        "like": _like_prefix(old_path),
+        "parent_id": target_parent_id,
+    }
+    where = "path = :old_path OR path LIKE :like ESCAPE '\\'"
+    db.execute(
+        text(
+            f"""
+            UPDATE nodes
+            SET path = :new_path || substr(path, :cut),
+                parent_id = CASE WHEN path = :old_path THEN :parent_id ELSE parent_id END,
+                updated_at = :now
+            WHERE {where}
+            """
+        ),
+        params,
+    )
+    db.execute(
+        text(
+            f"""
+            UPDATE search_index
+            SET path = :new_path || substr(path, :cut)
+            WHERE {where}
+            """
+        ),
+        params,
+    )
+
+
+def _adjust_parent_counts(
+    db: Session,
+    old_parent_id: int | None,
+    target_parent_id: int | None,
+    source_type: str,
+) -> None:
+    field = "archive_count" if source_type == constants.SOURCE_ZIP else "subdir_count"
+
+    def bump(parent_id: int | None, delta: int) -> None:
+        if parent_id is None:
+            return
+        parent = db.get(Node, parent_id)
+        if parent is None:
+            return
+        setattr(parent, field, max(0, getattr(parent, field) + delta))
+
+    bump(old_parent_id, -1)
+    bump(target_parent_id, 1)
 
 
 def move_node_subtree(
@@ -78,12 +121,14 @@ def move_node_subtree(
     node: Node,
     target_parent_id: int | None,
     settings: Settings | None = None,
-) -> None:
+) -> str:
+    """把节点目录重命名到目标下，并改写子树路径。返回新路径。"""
     settings = settings or get_settings()
     target_parent = db.get(Node, target_parent_id) if target_parent_id is not None else None
     old_path = node.path
     new_path = _dest_path(node, target_parent)
     old_parent_id = node.parent_id
+    source_type = node.source_type
 
     src = resolve_node_dir(settings.gallery_root, node)
     dst = settings.gallery_root / new_path
@@ -94,34 +139,12 @@ def move_node_subtree(
     shutil.move(str(src), str(dst))
     logger.info("moved disk %s -> %s", old_path, new_path)
 
-    subtree = collect_subtree_nodes(db, old_path)
-    now = time.time()
-    for item in subtree:
-        if item.path == old_path:
-            item.path = new_path
-        else:
-            item.path = new_path + item.path[len(old_path) :]
-        item.parent_id = _resolve_parent_id(db, item.path)
-        item.updated_at = now
-        sync_node_search_index(db, item)
-
-    if old_parent_id is not None:
-        old_parent = db.get(Node, old_parent_id)
-        if old_parent is not None:
-            if node.source_type == constants.SOURCE_ZIP:
-                old_parent.archive_count = max(0, old_parent.archive_count - 1)
-            else:
-                old_parent.subdir_count = max(0, old_parent.subdir_count - 1)
-
-    if target_parent_id is not None:
-        new_parent = db.get(Node, target_parent_id)
-        if new_parent is not None:
-            if node.source_type == constants.SOURCE_ZIP:
-                new_parent.archive_count += 1
-            else:
-                new_parent.subdir_count += 1
-
-    _refresh_container_covers(db, settings)
+    _retarget_subtree(db, old_path, new_path, target_parent_id)
+    _adjust_parent_counts(db, old_parent_id, target_parent_id, source_type)
+    db.flush()
+    # 丢掉内存里的旧 path，避免后续 flush 把前缀更新盖回去
+    db.expire_all()
+    return new_path
 
 
 def move_nodes(
@@ -130,33 +153,41 @@ def move_nodes(
     target_parent_id: int | None,
     settings: Settings | None = None,
 ) -> tuple[int, list[str]]:
+    """批量移动。请求内只做重命名和路径更新，封面由随后的扫描补齐。"""
     settings = settings or get_settings()
-    nodes = [db.get(Node, nid) for nid in node_ids]
-    missing = [str(nid) for nid, node in zip(node_ids, nodes, strict=True) if node is None]
-    valid = [node for node in nodes if node is not None]
-    roots = filter_deletion_roots(valid)
+    changed: list[str] = []
+    with scan_lock():
+        nodes = [db.get(Node, nid) for nid in node_ids]
+        missing = [str(nid) for nid, node in zip(node_ids, nodes, strict=True) if node is None]
+        valid = [node for node in nodes if node is not None]
+        roots = filter_deletion_roots(valid)
 
-    moved = 0
-    errors: list[str] = list(missing)
-    logger.info(
-        "move nodes requested ids=%s target=%s roots=%s",
-        node_ids,
-        target_parent_id,
-        [node.path for node in roots],
-    )
+        moved = 0
+        errors: list[str] = list(missing)
+        logger.info(
+            "move nodes requested ids=%s target=%s roots=%s",
+            node_ids,
+            target_parent_id,
+            [node.path for node in roots],
+        )
 
-    for node in roots:
-        err = _validate_target(db, node, target_parent_id)
-        if err:
-            errors.append(err)
-            continue
-        try:
-            move_node_subtree(db, node, target_parent_id, settings)
-            moved += 1
-        except (ValueError, OSError) as exc:
-            logger.warning("move failed id=%s path=%s error=%s", node.id, node.path, exc)
-            errors.append(f"{node.name}: {exc}")
+        for node in roots:
+            err = _validate_target(db, node, target_parent_id)
+            if err:
+                errors.append(err)
+                continue
+            old_path = node.path
+            try:
+                new_path = move_node_subtree(db, node, target_parent_id, settings)
+                changed.extend((old_path, new_path))
+                moved += 1
+            except (ValueError, OSError) as exc:
+                logger.warning("move failed id=%s path=%s error=%s", node.id, old_path, exc)
+                errors.append(f"{node.name}: {exc}")
 
-    db.commit()
+        db.commit()
+
+    if changed and settings.watch_enabled:
+        schedule_scan("move", changed)
     logger.info("move finished moved=%s errors=%s", moved, len(errors))
     return moved, errors
