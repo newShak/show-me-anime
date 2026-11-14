@@ -26,6 +26,21 @@
         @change="onTagModeChange"
       />
       <el-button @click="$router.push('/browse')">返回顶层</el-button>
+      <div v-if="items.length" class="batch-bar">
+        <el-button @click="toggleSelectMode">{{ selectMode ? '取消多选' : '多选' }}</el-button>
+        <template v-if="selectMode">
+          <el-button @click="toggleSelectAll">{{ allSelected ? '取消全选' : '全选' }}</el-button>
+          <el-button :disabled="!selectedNodeIds.length" @click="openTagPicker(selectedNodeIds)">
+            标签{{ selectedNodeIds.length ? ` (${selectedNodeIds.length})` : '' }}
+          </el-button>
+          <el-button :disabled="!selectedNodeIds.length" @click="openMovePicker(selectedNodeIds)">
+            移动{{ selectedNodeIds.length ? ` (${selectedNodeIds.length})` : '' }}
+          </el-button>
+          <el-button type="danger" :disabled="!selectedNodeIds.length" :loading="deleting" @click="onBatchDelete">
+            删除{{ selectedNodeIds.length ? ` (${selectedNodeIds.length})` : '' }}
+          </el-button>
+        </template>
+      </div>
     </header>
 
     <main class="content">
@@ -48,30 +63,6 @@
         </div>
       </section>
       <p v-if="hasFilter" class="summary">{{ summaryText }} · 共 {{ total }} 个结果</p>
-      <div v-if="items.length" class="batch-bar">
-        <el-button text size="small" @click="toggleSelectMode">{{ selectMode ? '取消' : '选择' }}</el-button>
-        <template v-if="selectMode">
-          <el-button text size="small" @click="toggleSelectAll">
-            {{ allSelected ? '取消全选' : '全选' }}
-          </el-button>
-          <el-button text size="small" :disabled="!selectedNodeIds.length" @click="openTagPicker(selectedNodeIds)">
-            标签{{ selectedNodeIds.length ? ` (${selectedNodeIds.length})` : '' }}
-          </el-button>
-          <el-button text size="small" :disabled="!selectedNodeIds.length" @click="openMovePicker(selectedNodeIds)">
-            移动{{ selectedNodeIds.length ? ` (${selectedNodeIds.length})` : '' }}
-          </el-button>
-          <el-button
-            text
-            size="small"
-            type="danger"
-            :disabled="!selectedNodeIds.length"
-            :loading="deleting"
-            @click="onBatchDelete"
-          >
-            删除{{ selectedNodeIds.length ? ` (${selectedNodeIds.length})` : '' }}
-          </el-button>
-        </template>
-      </div>
 
       <el-skeleton v-if="loading && !items.length" :rows="4" animated />
 
@@ -752,9 +743,9 @@ onUnmounted(() => {
 .batch-bar {
   display: flex;
   flex-wrap: wrap;
-  gap: 4px;
+  gap: 8px;
   align-items: center;
-  margin-bottom: 16px;
+  margin-left: auto;
 }
 
 .sentinel {
